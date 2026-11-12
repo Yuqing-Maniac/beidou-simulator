@@ -12,6 +12,6 @@ export function mountStartup() {
   let timer=0;
   const close=()=>{clearTimeout(timer);audio.pause();splash.remove();};
   document.getElementById('skip-splash')!.onclick=close;
-  // Leave time to see the complete compass assembly and title reveal.
-  timer=window.setTimeout(close,8500);
+  // Match the 2.5 second visual timeline.
+  timer=window.setTimeout(close,2500);
 }
