@@ -17,7 +17,16 @@ async function main() {
     if(!initial.fullscreen||!initial.ready||!initial.splashClosed)throw new Error('Startup validation failed: '+JSON.stringify(initial));
     const toggles=await evaluate(`(async()=>{await window.beidou.fullscreen(true);await new Promise(r=>setTimeout(r,700));const windowed=!await window.beidou.fullscreen();await window.beidou.fullscreen(true);await new Promise(r=>setTimeout(r,700));return {windowed,restored:await window.beidou.fullscreen()};})()`);
     if(!toggles.windowed||!toggles.restored)throw new Error('Fullscreen toggle failed: '+JSON.stringify(toggles));
-    console.log('Packaged UI and fullscreen checks passed:',JSON.stringify({initial,toggles}));
+    const tutorial=await evaluate(`(async()=>{
+      document.getElementById('tutorial-open').click();
+      const audio=document.getElementById('tutorial-audio');
+      await new Promise((resolve,reject)=>{if(audio.readyState>=1)return resolve();audio.addEventListener('loadedmetadata',resolve,{once:true});audio.addEventListener('error',()=>reject(new Error('Offline narration failed to load')),{once:true});setTimeout(()=>reject(new Error('Offline narration metadata timeout')),10000);});
+      const result={visible:!document.getElementById('tutorial-panel').hidden,chapters:document.getElementById('tutorial-chapter').options.length,duration:audio.duration,offline:audio.currentSrc.startsWith('file:'),transcript:document.getElementById('tutorial-transcript').textContent.length>80};
+      document.getElementById('tutorial-close').click();return result;
+    })()`);
+    if(!tutorial.visible||tutorial.chapters!==24||tutorial.duration<5||!tutorial.offline||!tutorial.transcript)throw new Error('Tutorial validation failed: '+JSON.stringify(tutorial));
+    console.log('Packaged offline tutorial checks passed:',JSON.stringify(tutorial));
+    console.log('Packaged UI and fullscreen checks passed:' ,JSON.stringify({initial,toggles}));
   } finally {ws.close();}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});
