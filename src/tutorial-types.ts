@@ -1,0 +1,1 @@
+export type TutorialChapter={id:string;title:string;target:string;overview:string;narration:string;steps:{label:string;action:string;expect:string;target:string}[];tips:string[];advanced:boolean;view:'board'|'proto'|'track'};

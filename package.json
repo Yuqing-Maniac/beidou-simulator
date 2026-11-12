@@ -9,7 +9,7 @@
   "homepage": "https://localhost/beidou-simulator",
   "scripts": {
     "start": "vite --host 127.0.0.1 --port 43123 --strictPort",
-    "test": "node --experimental-strip-types --test --test-force-exit test/protocol.test.ts test/motion.test.ts test/workspace.test.ts && node --test --test-force-exit test/multicast.test.mjs test/link.test.mjs",
+    "test": "node --experimental-strip-types --test --test-force-exit test/protocol.test.ts test/motion.test.ts test/workspace.test.ts test/tutorial.test.ts && node --test --test-force-exit test/multicast.test.mjs test/link.test.mjs",
     "build": "vite build",
     "pack:linux": "vite build && electron-builder --linux deb tar.gz AppImage",
     "pack:win": "vite build && electron-builder --win zip portable"

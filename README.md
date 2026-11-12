@@ -28,3 +28,5 @@ npm run pack:win
 Windows 64 位测试包在 [v0.5.0-test Release](https://github.com/Yuqing-Maniac/beidou-simulator/releases/tag/v0.5.0-test) 下载：便携 EXE 双击运行，或将 ZIP 完整解压后运行其中的 `beidou-simulator.exe`。
 
 0.5.0-test：司南罗盘启动动画与启动音、场景／地图合并、离线仿真场地底图、同网卡组播和单播双发、固定高度报文流，以及三种经纬度显示格式。保留完整 Electron 运行时，优先保证兼容性。
+
+语音教程：顶部“语音教程”可打开 24 章离线中文讲解、逐步定位与结果检查。“使用说明”支持搜索章节和下载约 1.4 万字完整教程。全部音频随软件打包，不依赖系统中文语音包；教程不会自动改参数或发报。教程内容与维护流程见 `docs/tutorial.txt` 和 `docs/TUTORIAL_AUTHORING.txt`。

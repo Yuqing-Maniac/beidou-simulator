@@ -1,0 +1,14 @@
+语音教程维护说明
+
+src/tutorial-data.json 是章节、讲解原文、详细步骤、预期结果及定位选择器的来源。
+docs/tutorial.txt 是可下载的完整文字教程。修改讲解原文后，需要同时更新文字教程，并重新生成相应音频。
+public/tutorial/audio/manifest.json 记录音频文件、时长以及讲解原文的 SHA256。自动测试会检查是否缺失或过期。
+
+开发环境重新生成语音：
+1. 在独立 Python 虚拟环境安装 sherpa-onnx==2.0.1 和 numpy，并准备 ffmpeg。
+2. 从 https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models 下载 kokoro-int8-multi-lang-v1_1.tar.bz2，解压到开发机器。
+3. 在仓库根目录运行 python scripts/render_tutorial_audio.py --model-dir <解压目录>。
+4. 检查每个章节的音频可播放、讲解文字一致，并执行 npm test 和 npm run build。
+
+语音模型为 Apache-2.0 许可的 Kokoro v1.1-zh，音色为 zf_001。
+用户安装包只携带生成后的 MP3 和提示音，不携带语音模型，不依赖在线 TTS 或本机中文语音包。

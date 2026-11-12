@@ -1,0 +1,8 @@
+北辰离线教程语音
+教程文本：本项目的 src/tutorial-data.json；音频为中文合成语音，不是真人实时讲解。
+模型：Kokoro-82M-v1.1-zh（Apache License 2.0），使用 zf_001 合成音色。
+模型来源：https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh
+ONNX 导出与运行工具：k2-fsa/sherpa-onnx。
+模型包：https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models
+安装包仅携带已生成的教程音频，无需联网或下载语音模型。
+随附 LICENSE-kokoro.txt 保留模型许可说明。
