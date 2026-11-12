@@ -348,6 +348,7 @@ type LivePacket = {
 declare global {
   interface Window {
     beidou?: {
+      fullscreen: (toggle?:boolean) => Promise<boolean>;
       nics: () => Promise<Nic[]>;
       listen: (cfg: Record<string, unknown>) => Promise<unknown>;
       send: (cfg: Record<string, unknown>) => Promise<{ ok?: boolean; bytes?: number; error?: string; channels?: string[]; tcpError?: string }>;
@@ -862,3 +863,17 @@ $('stream-clear').onclick=()=>{state.rows=[];renderStream();};
 $('opening-preview').onclick=()=>{const el=document.createElement('div');el.id='splash';document.body.appendChild(el);mountStartup();};
 window.addEventListener('resize',()=>drawMap());
 drawMap();
+
+async function updateFullscreenLabel() {
+  const full=window.beidou ? await window.beidou.fullscreen() : Boolean(document.fullscreenElement);
+  $('fullscreen-toggle').textContent=full?'退出全屏 · F11':'进入全屏 · F11';
+}
+$('fullscreen-toggle').onclick=async()=>{
+  if(window.beidou) await window.beidou.fullscreen(true);
+  else if(document.fullscreenElement) await document.exitFullscreen();
+  else await document.documentElement.requestFullscreen();
+  setTimeout(()=>void updateFullscreenLabel(),200);
+};
+document.addEventListener('fullscreenchange',()=>void updateFullscreenLabel());
+window.addEventListener('resize',()=>void updateFullscreenLabel());
+void updateFullscreenLabel();

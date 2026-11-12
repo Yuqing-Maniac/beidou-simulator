@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("beidou", {
+  fullscreen: (toggle=false) => ipcRenderer.invoke("beidou:fullscreen",toggle),
   nics: () => ipcRenderer.invoke("beidou:nics"),
   listen: (cfg) => ipcRenderer.invoke("beidou:listen", cfg),
   send: (cfg) => ipcRenderer.invoke("beidou:send", cfg),
