@@ -31,6 +31,9 @@ function createSession() {
     port: DEFAULT_PORT,
     iface: defaultIface(),
     udpEnabled: true,
+    unicastEnabled: false,
+    unicastHost: "127.0.0.1",
+    unicastPort: 6022,
     tcpEnabled: false,
     tcpMode: "client",
     tcpHost: "127.0.0.1",
@@ -47,7 +50,7 @@ function createSession() {
 
   function emitStatus() {
     const snap = {
-      udp: config.udpEnabled ? `UDP 组播 ${config.host}:${config.port}` : "UDP 关",
+      udp: `${config.udpEnabled ? `组播 ${config.host}:${config.port}` : "组播关"} · ${config.unicastEnabled ? `单播 ${config.unicastHost}:${config.unicastPort}` : "单播关"}`,
       tcp: tcpStatus,
       udpEnabled: config.udpEnabled,
       tcpEnabled: config.tcpEnabled,
@@ -61,6 +64,9 @@ function createSession() {
     if (next.host) config.host = String(next.host);
     if (next.port) config.port = Number(next.port);
     if (typeof next.iface === "string") config.iface = next.iface;
+    if (typeof next.unicastEnabled === "boolean") config.unicastEnabled = next.unicastEnabled;
+    if (next.unicastHost) config.unicastHost = String(next.unicastHost);
+    if (next.unicastPort) config.unicastPort = Number(next.unicastPort);
     if (typeof next.udpEnabled === "boolean") config.udpEnabled = next.udpEnabled;
     if (typeof next.tcpEnabled === "boolean") config.tcpEnabled = next.tcpEnabled;
     if (next.tcpMode === "client" || next.tcpMode === "server") config.tcpMode = next.tcpMode;
@@ -227,13 +233,13 @@ function createSession() {
     takeConfig(next);
     return listenUdp().then((udp) => openTcp().then((tcp) => ({ ...udp, ...tcp, ok: true })).catch((err) => {
       tcpStatus = `TCP ${err.message}`;
-      return { ...udp, ok: config.udpEnabled, tcpError: err.message, ...emitStatus() };
+      return { ...udp, ok: config.udpEnabled || config.unicastEnabled, tcpError: err.message, ...emitStatus() };
     }));
   }
 
-  function udpSend(payload) {
-    const host = config.host;
-    const port = config.port;
+  function udpSend(payload, unicast = false) {
+    const host = unicast ? config.unicastHost : config.host;
+    const port = unicast ? config.unicastPort : config.port;
     const iface = config.iface;
     return new Promise((resolve, reject) => {
       const socket = dgram.createSocket({ type: "udp4", reuseAddr: true });
@@ -247,10 +253,12 @@ function createSession() {
         else resolve({ host, port, iface });
       };
       socket.once("error", finish);
-      socket.bind(0, () => {
+      socket.bind(0, iface || undefined, () => {
         try {
-          socket.setMulticastLoopback(true);
-          if (iface) socket.setMulticastInterface(iface);
+          if (!unicast) {
+            socket.setMulticastLoopback(true);
+            if (iface) socket.setMulticastInterface(iface);
+          }
           socket.send(payload, port, host, finish);
         } catch (err) {
           finish(err);
@@ -272,6 +280,7 @@ function createSession() {
     };
     const jobs = [];
     if (config.udpEnabled) jobs.push(udpSend(payload).then(() => report.channels.push("udp")));
+    if (config.unicastEnabled) jobs.push(udpSend(payload, true).then(() => report.channels.push("unicast")));
     if (config.tcpEnabled) {
       if (tcpPeers.size === 0) report.tcpError = "TCP 无连接";
       else {
@@ -279,9 +288,9 @@ function createSession() {
         report.channels.push("tcp");
       }
     }
-    if (!config.udpEnabled && !config.tcpEnabled) {
+    if (!config.udpEnabled && !config.unicastEnabled && !config.tcpEnabled) {
       report.ok = false;
-      report.error = "UDP 与 TCP 都未打开";
+      report.error = "组播、单播与 TCP 都未打开";
     }
     return Promise.all(jobs).then(() => report);
   }

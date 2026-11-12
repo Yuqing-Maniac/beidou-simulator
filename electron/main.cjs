@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const { createSession, listNics } = require("./multicast.cjs");
 
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 const session = createSession();
 
 function createWindow() {

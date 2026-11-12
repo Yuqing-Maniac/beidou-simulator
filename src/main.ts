@@ -1,3 +1,6 @@
+import { coordinate, type CoordinateFormat } from "./coordinates.ts";
+import { drawBasemap } from "./basemap.ts";
+import { mountStartup } from "./startup.ts";
 import { parseWorkspace, validatePath, replaySentences } from "./workspace.ts";
 import helpText from "../docs/guide.txt?raw";
 import { DATASETS, type Dataset } from "./datasets.ts";
@@ -32,6 +35,7 @@ type StreamRow = {
   note: string;
 };
 
+let streamTimer=0;
 const archive: (StreamRow & { timestamp: string })[] = [];
 const state = {
   datasetId: DATASETS[0].id,
@@ -48,6 +52,10 @@ const state = {
   rows: [] as StreamRow[],
   selectedRow: 0,
   seq: 1,
+  previewMotion: false,
+  streamFrozen: false,
+  receivedTokens: null as Tokens | null,
+  mapTrail: [] as LatLon[],
 };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -58,12 +66,19 @@ function dataset(): Dataset {
 
 function applyDataset(id: string) {
   const d = DATASETS.find((x) => x.id === id) ?? DATASETS[0];
+  setTrack(false); frozenTrackTime=0; state.mapTrail=[]; state.previewMotion=Boolean(d.motion);
   state.datasetId = d.id;
   state.tokens = { ...d.tokens };
   state.checksumOverride = d.checksumOverride;
+  if (d.motion) ($('track-kind') as HTMLSelectElement).value=d.motion;
+  if(Math.abs(Number(d.tokens.lat))<=90&&Math.abs(Number(d.tokens.lon))<=180) {
+    ($('track-lat') as HTMLInputElement).value=Number(d.tokens.lat).toFixed(8);
+    ($('track-lon') as HTMLInputElement).value=Number(d.tokens.lon).toFixed(8);
+  }
+  ($('track-heading') as HTMLInputElement).value=d.tokens.heading;
   renderDataset();
   renderFields();
-  renderWire();
+  renderWire();drawMap();
   const preview = currentSentence();
   pushRow("预览", preview, d.fault ? "故障注入预览" : "当前数据集");
   for (const extra of d.extraSentences ?? []) pushRow("接收", extra.sentence, extra.label);
@@ -83,7 +98,7 @@ function renderDataset() {
     b.innerHTML = `<span class="scenario-tag">${d.fault ? "协议故障" : d.id === "official" ? "协议基准" : "工况模拟"}</span><strong>${escapeHtml(d.name)}</strong><small>${escapeHtml(d.purpose)}</small>`;
     b.setAttribute("role", "option");
     b.setAttribute("aria-selected", d.id === state.datasetId ? "true" : "false");
-    b.addEventListener("click", () => applyDataset(d.id));
+    b.addEventListener("click", () => {($("map-source") as HTMLSelectElement).value="current";applyDataset(d.id);});
     host.appendChild(b);
   }
   const d = dataset();
@@ -162,12 +177,13 @@ function fieldRow(key: string) {
   const input = wrap.querySelector("input") as HTMLInputElement;
   input.value = key === "header" ? "$GPCHC" : state.tokens[key] ?? "";
   input.readOnly = key === "header";
+  if(key==='lat'||key==='lon') input.addEventListener('change',()=>{const n=Number(input.value);if(input.value.trim()&&Number.isFinite(n)&&Math.abs(n)<=(key==='lat'?90:180)){state.tokens[key]=n.toFixed(8);input.value=state.tokens[key];if(!state.trackOn)($("track-"+key) as HTMLInputElement).value=state.tokens[key];refreshDerived();renderWire();drawMap();}});
   input.addEventListener("input", () => {
     if (key === "header") return;
     state.tokens[key] = input.value.trim();
     state.checksumOverride = undefined;
     refreshDerived();
-    renderWire();
+    renderWire();drawMap();
   });
   return wrap;
 }
@@ -201,7 +217,7 @@ function refreshDerived() {
     tokenEl.textContent = shown;
     const meta = row.querySelector(".meta") as HTMLElement;
     let metaText = "";
-    if (f.key === "lat" || f.key === "lon") metaText = `度分 ${decimalMinutes(token, f.key)}`;
+    if (f.key === "lat" || f.key === "lon") metaText = coordinate(Number(token), f.key, coordFormat());
     if (f.key === "status") {
       const st = decodeStatus(token);
       tokenEl.textContent = `${st.tens} / ${st.ones}`;
@@ -211,7 +227,7 @@ function refreshDerived() {
     (row.querySelector(".issue") as HTMLElement).textContent = issues.map((i) => i.text).join("；");
     if (f.key === "v2d") {
       const speed = v2dConsistent(state.tokens);
-      row.title = `${row.title}。${speed.text}`;
+      row.title = `${f.description}。${speed.text}`;
     }
   }
   const cal = gpsCalendar(state.tokens.week, state.tokens.sow);
@@ -261,12 +277,12 @@ function pushRow(dir: StreamRow["dir"], sentence: string, note: string) {
     sentence,
     note,
   };
+  if(dir==="接收"){state.receivedTokens=decodeSentence(sentence).tokens;if(($("map-source") as HTMLSelectElement).value==="receive")drawMap();}
   archive.push({ ...row, timestamp: new Date().toISOString() });
   if (archive.length > 100000) archive.shift();
   state.rows.unshift(row);
   state.rows = state.rows.slice(0, 30);
-  state.selectedRow = row.id;
-  renderStream();
+  if (!state.streamFrozen) { state.selectedRow = row.id; if(!streamTimer)streamTimer=window.setTimeout(()=>{streamTimer=0;if(!state.streamFrozen)renderStream();},150); }
 }
 
 function renderStream() {
@@ -305,6 +321,7 @@ function renderParse(row: StreamRow) {
     if (f.index > 23) continue;
     const token = f.key === "header" ? `$${decoded.tokens.header ?? ""}` : decoded.tokens[f.key] ?? "";
     let extra = "";
+    if (f.key === "lat" || f.key === "lon") extra = ` · ${coordinate(Number(token),f.key,coordFormat())}`;
     if (f.key === "status") extra = ` · ${st.tens} / ${st.ones}`;
     if (f.key === "warning") extra = onBits.length ? ` · ${onBits.join("，")}` : "";
     const wide = f.key === "status" || f.key === "warning" ? " wide" : "";
@@ -345,6 +362,9 @@ function netConfig() {
     host: ($("host") as HTMLInputElement).value.trim() || "224.100.100.1",
     port: Number(($("port") as HTMLInputElement).value) || 6020,
     iface: ($("iface") as HTMLSelectElement).value,
+    unicastEnabled: ($("unicast-on") as HTMLInputElement).checked,
+    unicastHost: ($("unicast-host") as HTMLInputElement).value.trim(),
+    unicastPort: Number(($("unicast-port") as HTMLInputElement).value)||6022,
     udpEnabled: ($("udp-on") as HTMLInputElement).checked,
     tcpEnabled: ($("tcp-on") as HTMLInputElement).checked,
     tcpMode: ($("tcp-mode") as HTMLSelectElement).value,
@@ -378,8 +398,7 @@ function acceptLive(packet: LivePacket) {
     return;
   }
   if (!packet.sentence) return;
-  const sentence = packet.sentence.endsWith("\n") ? packet.sentence.replace(/\n$/, "\r\n") : `${packet.sentence}\r\n`;
-  const normalized = sentence.includes("\r\n") ? sentence : `${sentence}\r\n`;
+  const normalized = packet.sentence.replace(/[\r\n]+$/, '')+'\r\n';
   const via = packet.channel === "tcp" ? "TCP" : "UDP";
   pushRow("接收", normalized, `${via} ${packet.from ?? ""}:${packet.port ?? ""}`);
 }
@@ -461,6 +480,7 @@ async function sendOnce() {
 }
 
 function setRunning(on: boolean) {
+  if(dataset().motion) setTrack(on);
   state.running = on;
   window.clearInterval(state.timer);
   const run = $("send-run");
@@ -547,7 +567,9 @@ function show(view: "board" | "proto" | "track") {
     $(id).classList.toggle("is-on", view === name);
     $(id).setAttribute("aria-pressed", view === name ? "true" : "false");
   }
-  if (view === "track") drawMap();
+  $("board").hidden = view === "proto";
+  $("track").hidden = false;
+  if (view === "track") {drawMap();$("track").scrollIntoView({behavior:"smooth",block:"start"});}
 }
 
 function numInput(id: string, fallback: number): number {
@@ -586,26 +608,31 @@ function drawMap() {
   ctx.fillRect(0, 0, w, h);
   const spec = trackSpec();
   const elapsed = state.trackOn ? (performance.now() - state.trackT0) / 1000 : 0;
-  const now = liveMotion(state.trackOn ? elapsed : frozenTrackTime);
+  const mapTokens=($("map-source") as HTMLSelectElement).value==="receive" ? state.receivedTokens ?? {} : state.tokens;
+  const lat=mapTokens.lat?.trim()?Number(mapTokens.lat):NaN,lon=mapTokens.lon?.trim()?Number(mapTokens.lon):NaN;
+  const valid=Number.isFinite(lat)&&Number.isFinite(lon)&&Math.abs(lat)<=90&&Math.abs(lon)<=180;
+  const now = {lat:valid?lat:numInput('track-lat',31.15960455),lon:valid?lon:numInput('track-lon',121.17847990),headingDeg:Number(mapTokens.heading)||0,ve:Number(mapTokens.ve)||0,vn:Number(mapTokens.vn)||0,v2d:Number(mapTokens.v2d)||0,gyroZ:Number(mapTokens.gz)||0};
+  $('map-status').textContent=valid?'':'坐标超范围，故障报文不绘制定位点';
   const preview: LatLon[] = [];
   const steps = spec.kind === "path" ? Math.max(2, spec.points.length * 8) : 80;
-  const horizon = spec.kind === "line" ? 20 : spec.kind === "path" ? 60 : (2 * Math.PI * Math.max(1, numInput("track-radius", 80))) / Math.max(0.1, numInput("track-speed", 10));
+  const horizon = spec.kind === "line" ? 20 : spec.kind === "path" ? 60 : ((spec.kind === "eight" ? 4 : 2) * Math.PI * Math.max(1, numInput("track-radius", 80))) / Math.max(0.1, numInput("track-speed", 10));
   for (let i = 0; i <= steps; i++) preview.push(sampleTrack(spec, (horizon * i) / steps));
-  if (spec.kind === "path") preview.splice(0, preview.length, ...spec.points);
-  const origin = { lat: numInput("track-lat", 31.15960455), lon: numInput("track-lon", 121.1784799) };
+  if (spec.kind === "path") preview.splice(0, preview.length, ...spec.points, ...(spec.loop && spec.points.length ? [spec.points[0]] : []));
+  const origin = ($("map-source") as HTMLSelectElement).value==="receive"&&valid ? {lat,lon} : { lat: numInput("track-lat", 31.15960455), lon: numInput("track-lon", 121.1784799) };
+  if(!state.previewMotion)preview.length=0;
   const pts = [...preview, now, origin];
   const meters = pts.map((p) => latLonToMeters(origin, p));
   let minE = Math.min(...meters.map((p) => p.east));
   let maxE = Math.max(...meters.map((p) => p.east));
   let minN = Math.min(...meters.map((p) => p.north));
   let maxN = Math.max(...meters.map((p) => p.north));
-  if (maxE - minE < 40) {
-    minE -= 40;
-    maxE += 40;
+  if (maxE - minE < 700) {
+    minE -= 350;
+    maxE += 350;
   }
-  if (maxN - minN < 40) {
-    minN -= 40;
-    maxN += 40;
+  if (maxN - minN < 700) {
+    minN -= 350;
+    maxN += 350;
   }
   const pad = 28;
   const scale = Math.min((w - pad * 2) / (maxE - minE), (h - pad * 2) / (maxN - minN));
@@ -616,18 +643,7 @@ function drawMap() {
     const m = latLonToMeters(origin, p);
     return { x: ox + m.east * scale, y: oy - m.north * scale };
   };
-  ctx.strokeStyle = "rgba(18,54,47,0.18)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const x = pad + ((w - pad * 2) * i) / 4;
-    const y = pad + ((h - pad * 2) * i) / 4;
-    ctx.beginPath();
-    ctx.moveTo(x, pad);
-    ctx.lineTo(x, h - pad);
-    ctx.moveTo(pad, y);
-    ctx.lineTo(w - pad, y);
-    ctx.stroke();
-  }
+  drawBasemap(ctx,ox,oy,scale,w,h);
   ctx.strokeStyle = "#0c6b5c";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -646,6 +662,7 @@ function drawMap() {
       ctx.fill();
     }
   }
+  if(valid && state.mapTrail.length) {ctx.beginPath();ctx.strokeStyle='#dd9e31';ctx.lineWidth=3;state.mapTrail.forEach((p,i)=>{const q=at(p);if(i)ctx.lineTo(q.x,q.y);else ctx.moveTo(q.x,q.y);});ctx.stroke();}
   const here = at(now);
   const x = here.x;
   const y = here.y;
@@ -659,10 +676,11 @@ function drawMap() {
   ctx.lineTo(0, 4);
   ctx.lineTo(-6, 8);
   ctx.closePath();
-  ctx.fill();
+  if(valid)ctx.fill();
   ctx.restore();
   const text = formatTrackTokens(now);
-  $("track-readout").textContent = `Lat ${text.lat}  Lon ${text.lon}  航向 ${text.heading}  Ve ${text.ve}  Vn ${text.vn}  V_2D ${text.v2d}`;
+  $("track-readout").textContent = `纬 ${coordinate(lat,'lat',coordFormat())}  经 ${coordinate(lon,'lon',coordFormat())}  航向 ${text.heading}°  速度 ${text.v2d} m/s`;
+  $('map-summary').textContent=`${dataset().name} · ${decodeStatus(mapTokens.status??"").tens} · 告警 ${mapTokens.warning??"—"}`;
 }
 
 let frozenTrackTime = 0;
@@ -674,12 +692,17 @@ function setTrack(on: boolean) {
   button.textContent = on ? "暂停运动" : "开始运动";
   button.classList.toggle("is-on", on);
   button.setAttribute("aria-pressed", on ? "true" : "false");
-  if (!on) return;
+  if (!on) {drawMap();return;}
+  ($("map-source") as HTMLSelectElement).value="current";
+  state.previewMotion=true;
   state.trackT0 = performance.now() - frozenTrackTime * 1000;
   const loop = () => {
     if (!state.trackOn) return;
     stampLive();
-    if (!$("track").hidden) drawMap();
+    const last=state.mapTrail[state.mapTrail.length-1];
+    const next={lat:Number(state.tokens.lat),lon:Number(state.tokens.lon)};
+    if(!last || Math.hypot(next.lat-last.lat,next.lon-last.lon)>0.000005){state.mapTrail.push(next);if(state.mapTrail.length>2000)state.mapTrail.shift();}
+    drawMap();
     state.trackFrame = window.requestAnimationFrame(loop);
   };
   state.trackFrame = window.requestAnimationFrame(loop);
@@ -709,7 +732,7 @@ $("track-clear").addEventListener("click", () => {
 });
 for (const id of ["track-accel", "track-kind", "track-lat", "track-lon", "track-heading", "track-speed", "track-radius", "track-loop"]) {
   $(id).addEventListener("change", () => {
-    frozenTrackTime = 0;
+    frozenTrackTime = 0;state.previewMotion=true;state.mapTrail=[];
     if (state.trackOn) state.trackT0 = performance.now();
     drawMap();
   });
@@ -732,7 +755,7 @@ $("paste-form").addEventListener("submit", (ev) => {
   pushRow("接收", sentence.includes("\r\n") ? sentence : sentence + "\r\n", "粘贴");
 });
 
-for (const id of ["host", "port", "iface", "udp-on", "tcp-on", "tcp-mode", "tcp-host", "tcp-port"]) {
+for (const id of ["unicast-on", "unicast-host", "unicast-port", "host", "port", "iface", "udp-on", "tcp-on", "tcp-mode", "tcp-host", "tcp-port"]) {
   $(id).addEventListener("change", () => void joinGroup());
 }
 ($("use-sys-time") as HTMLInputElement).addEventListener("change", () => {
@@ -762,7 +785,7 @@ if (window.beidou) {
 }
 const nicsReady = refreshNics();
 
-const controlIds = ['host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
+const controlIds = ['coord-format','unicast-on','unicast-host','unicast-port','host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
 const statusText = (text: string) => { $('file-status').textContent = text; };
 function download(name: string, content: string, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([content],{type}));
@@ -779,6 +802,7 @@ function restore(text: string) {
   setRunning(false); setTrack(false); stopReplay(); frozenTrackTime=0;
   state.datasetId=v.datasetId; state.tokens={...v.tokens}; state.path=v.path; state.checksumOverride=v.checksumOverride;
   for(const id of controlIds) { const el=$(id) as HTMLInputElement; const value=v.controls[id]; if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value; else if(typeof value==='string'&&el.type!=='checkbox')el.value=value; }
+  state.previewMotion=Boolean(dataset().motion); state.mapTrail=[];
   state.savedTime=null; renderDataset(); renderFields(); renderWire(); drawMap(); void joinGroup();
 }
 function guarded(action: ()=>void) { try { action(); } catch(e) { statusText(e instanceof Error?e.message:String(e)); } }
@@ -823,9 +847,18 @@ $('mode-simple').onclick=()=>mode(true);$('mode-config').onclick=()=>mode(false)
 $('quick-start').onclick=async()=>{stopReplay();setTrack(false);frozenTrackTime=0;applyDataset('static-rtk');($('udp-on') as HTMLInputElement).checked=true;($('tcp-on') as HTMLInputElement).checked=false;($('use-sys-time') as HTMLInputElement).checked=true;await joinGroup();setRunning(true);};
 $('help-content').textContent=helpText;
 $('help-open').onclick=()=>($('help-dialog') as HTMLDialogElement).showModal();$('help-close').onclick=()=>($('help-dialog') as HTMLDialogElement).close();
-const dismissSplash=()=>{ $('splash').remove(); };$('skip-splash').onclick=dismissSplash;setTimeout(()=>{if(document.getElementById('splash'))dismissSplash();},2200);
+mountStartup();
 void nicsReady.then(() => {
 try {const saved=localStorage.getItem('beichen-config');if(saved){restore(saved);statusText('已恢复本机配置；发送保持停止');}else {const path=localStorage.getItem('beichen-path');if(path){const v=JSON.parse(path);validatePath(v.path);state.path=v.path;for(const id of controlIds.filter(x=>x.startsWith('track-'))){const el=$(id) as HTMLInputElement;const value=v.controls?.[id];if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value;else if(typeof value==='string'&&el.type!=='checkbox')el.value=value;}drawMap();}}}catch{statusText('本机保存的数据不可用，可重新导入');}
 
 void joinGroup();
 }).catch(e => statusText(`网卡初始化失败：${String(e)}`));
+
+function coordFormat(): CoordinateFormat { return ($('coord-format') as HTMLSelectElement).value as CoordinateFormat; }
+$('map-source').onchange=()=>drawMap();
+$('coord-format').onchange=()=>{refreshDerived();drawMap();renderStream();};
+$('stream-freeze').onclick=()=>{state.streamFrozen=!state.streamFrozen;$('stream-freeze').textContent=state.streamFrozen?'继续刷新':'暂停刷新';if(!state.streamFrozen)renderStream();};
+$('stream-clear').onclick=()=>{state.rows=[];renderStream();};
+$('opening-preview').onclick=()=>{const el=document.createElement('div');el.id='splash';document.body.appendChild(el);mountStartup();};
+window.addEventListener('resize',()=>drawMap());
+drawMap();

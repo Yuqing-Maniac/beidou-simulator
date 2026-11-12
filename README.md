@@ -16,7 +16,7 @@ npm start
 
 `npm start` 同时提供页面和组播收发。桌面包装的是同一套页面，组播走 Electron 主进程，不经过这个 HTTP 接口。
 
-测试包版本是 `0.3.0-test`。银河麒麟 V10 x86_64 用 Electron 22（主程序最高依赖 GLIBC_2.17）。UDP 与 TCP 可同时打开。轨迹页是离线格网。
+测试包版本是 `0.4.0-test`。银河麒麟 V10 x86_64 用 Electron 22（主程序最高依赖 GLIBC_2.17）。UDP 与 TCP 可同时打开。轨迹页是离线格网。
 
 ```bash
 npm run pack:linux
@@ -25,4 +25,6 @@ npm run pack:win
 
 新增快速测试／完整配置、启动动画、本机配置与路径存档、JSON 导入导出、JSONL 日志、报文文件回放及简化加速转弯模型。详细说明可在界面点击“使用说明”，或查看 `docs/guide.txt`。
 
-Windows 64 位测试包在 [v0.3.0-test Release](https://github.com/Yuqing-Maniac/beidou-simulator/releases/tag/v0.3.0-test) 下载：便携 EXE 双击运行，或将 ZIP 完整解压后运行其中的 `beidou-simulator.exe`。
+Windows 64 位测试包在 [v0.4.0-test Release](https://github.com/Yuqing-Maniac/beidou-simulator/releases/tag/v0.4.0-test) 下载：便携 EXE 双击运行，或将 ZIP 完整解压后运行其中的 `beidou-simulator.exe`。
+
+0.4.0-test：司南罗盘启动动画与启动音、场景／地图合并、离线仿真场地底图、同网卡组播和单播双发、固定高度报文流，以及三种经纬度显示格式。保留完整 Electron 运行时，优先保证兼容性。

@@ -5,7 +5,7 @@ on:
       tag:
         description: Existing release tag to build
         required: true
-        default: v0.3.0-test
+        default: v0.4.0-test
 permissions:
   contents: write
 jobs:
@@ -23,7 +23,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Build Windows packages
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run pack:win
+      - name: Smoke test Windows executable
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath "$PWD/release/win-unpacked/beidou-simulator.exe" -ArgumentList '--disable-gpu' -PassThru
+          Start-Sleep -Seconds 7
+          $app.Refresh()
+          if ($app.HasExited) { throw "Application exited during startup: $($app.ExitCode)" }
+          Get-Process -Name beidou-simulator -ErrorAction SilentlyContinue | Stop-Process -Force
       - name: Checksum and publish release assets
         shell: pwsh
         env:
@@ -37,5 +47,7 @@ jobs:
           $checksums | Set-Content release/SHA256SUMS.txt -Encoding ascii
           gh release upload $env:RELEASE_TAG $packages[0].FullName $packages[1].FullName release/SHA256SUMS.txt --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
+          gh release upload $env:RELEASE_TAG docs/media/opening.mp4 docs/media/opening.png public/startup.wav --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Preview upload failed' }
           gh release edit $env:RELEASE_TAG --draft=false --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

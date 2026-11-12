@@ -119,3 +119,17 @@ test("udp and tcp carry the same sentence, and each switch sends only that path"
   server.close();
   outsider.close();
 });
+
+test('same interface sends identical multicast and unicast datagrams and disables each independently', async (t) => {
+  const iface=defaultIface();const session=createSession();const receiver=dgram.createSocket('udp4');
+  t.after(()=>{session.close();receiver.close();});
+  await new Promise(r=>receiver.bind(0,iface,r));
+  const unicast=[];receiver.on('message',(msg,remote)=>unicast.push({text:msg.toString('latin1'),from:remote.address}));
+  const multicast=[];session.onPacket(p=>multicast.push(p.sentence));
+  await session.listen({iface,host:'224.100.100.1',port:16030,udpEnabled:true,unicastEnabled:true,unicastHost:iface,unicastPort:receiver.address().port});
+  const both=await session.send(SENTENCE);assert.deepEqual(both.channels.sort(),['udp','unicast']);
+  await waitFor(()=>unicast.length===1&&multicast.includes(SENTENCE));assert.equal(unicast[0].text,SENTENCE);assert.equal(unicast[0].from,iface);
+  await session.listen({udpEnabled:false});
+  const only=await session.send(SENTENCE);assert.deepEqual(only.channels,['unicast']);await waitFor(()=>unicast.length===2);
+  const off=await session.send(SENTENCE,{unicastEnabled:false});assert.equal(off.ok,false);
+});

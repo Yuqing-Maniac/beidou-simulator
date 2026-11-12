@@ -5,6 +5,7 @@ export type Dataset = {
   name: string;
   purpose: string;
   fault: boolean;
+  motion?: "line" | "circle" | "eight";
   tokens: Tokens;
   checksumOverride?: string;
   extraSentences?: { label: string; sentence: string }[];
@@ -279,6 +280,10 @@ export const DATASETS: Dataset[] = [
     ],
   },
 ];
+
+for (const [motion, name] of [["line","直线加速巡航"],["circle","定速圆周转弯"],["eight","8 字交替转弯"]] as const) {
+  DATASETS.push({id:`motion-${motion}`,name,purpose:"地图、姿态、速度与输出报文联动。点击开始运动，再开启连续发送进行网络测试。",fault:false,motion,tokens:base({heading:"90.00",pitch:"0.00",roll:"0.00"})});
+}
 
 export function officialTokens(): Tokens {
   return DATASETS[0].tokens;

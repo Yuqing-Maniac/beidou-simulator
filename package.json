@@ -1,6 +1,6 @@
 {
   "name": "beidou-simulator",
-  "version": "0.3.0-test",
+  "version": "0.4.0-test",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -45,12 +45,13 @@
       "icon": "public/icon.png"
     },
     "win": {
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "target": [
         "zip",
         "portable"
       ],
-      "artifactName": "beidou-simulator-${version}-win-${arch}.${ext}"
+      "artifactName": "beidou-simulator-${version}-win-${arch}.${ext}",
+      "icon": "public/icon.ico"
     },
     "deb": {
       "depends": [
