@@ -1,7 +1,8 @@
+import { ReplayClock, replayTimeline, speedToSlider, sliderToSpeed } from "./replay.ts";
 import { coordinate, parseCoordinate, type CoordinateFormat } from "./coordinates.ts";
 import { drawBasemap } from "./basemap.ts";
 import { mountStartup } from "./startup.ts";
-import { parseWorkspace, validatePath, replaySentences } from "./workspace.ts";
+import { parseWorkspace, validatePath, replayRecords, type ReplayRecord } from "./workspace.ts";
 import helpText from "../docs/guide.txt?raw";
 import { DATASETS, type Dataset } from "./datasets.ts";
 import {
@@ -800,7 +801,7 @@ if (window.beidou) {
 }
 const nicsReady = refreshNics();
 
-const controlIds = ['coord-format','unicast-on','unicast-host','unicast-port','host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
+const controlIds = ['replay-speed','replay-rate','coord-format','unicast-on','unicast-host','unicast-port','host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
 const statusText = (text: string) => { $('file-status').textContent = text; };
 function download(name: string, content: string, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([content],{type}));
@@ -819,6 +820,7 @@ function restore(text: string) {
   for(const id of controlIds) { const el=$(id) as HTMLInputElement; const value=v.controls[id]; if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value; else if(typeof value==='string'&&el.type!=='checkbox')el.value=value; }
   refreshTrackCoordinates(true);previousCoordFormat=coordFormat();
   state.previewMotion=Boolean(dataset().motion); state.mapTrail=[];
+  setReplaySpeed(sliderToSpeed(Number(($('replay-speed') as HTMLInputElement).value)));
   updateRateHint();
   state.savedTime=null; renderDataset(); renderFields(); renderWire(); drawMap(); void joinGroup();
 }
@@ -832,8 +834,10 @@ $('load-path').onclick=()=>pick('path');
 $('load-replay').onclick=()=>pick('replay');
 $('save-path').onclick=()=>guarded(()=>{ const text=JSON.stringify({version:1,path:state.path,controls:Object.fromEntries(Object.entries(snapshot().controls).filter(([k])=>k.startsWith('track-')))},null,2); localStorage.setItem('beichen-path',text); download('beichen-path.json',text); statusText('路径和运动参数已保存'); });
 $('export-log').onclick=()=>{ download('beichen-log.jsonl',archive.map(x=>JSON.stringify(x)).join('\n'),'application/x-ndjson'); statusText(`已导出 ${archive.length} 条记录（本次会话最多保留 100000 条）`); };
-let replay: string[]=[]; let replayTimer=0; let replayIndex=0;
-function stopReplay() { clearTimeout(replayTimer); replayTimer=0; ($('replay-run') as HTMLButtonElement).disabled=!replay.length; ($('replay-stop') as HTMLButtonElement).disabled=true; }
+let replay: ReplayRecord[]=[]; let replayTimer=0; let replayIndex=0;
+let replayGeneration=0;let replayClock:ReplayClock|null=null;let replayTimes:number[]=[];
+let replaySpeed=1;let wakeReplay:(()=>void)|null=null;
+function stopReplay() { replayGeneration++;replayClock=null;wakeReplay=null;($('load-replay') as HTMLButtonElement).disabled=false;($('replay-rate') as HTMLInputElement).disabled=false;clearTimeout(replayTimer); replayTimer=0; ($('replay-run') as HTMLButtonElement).disabled=!replay.length; ($('replay-stop') as HTMLButtonElement).disabled=true; }
 picker.onchange=async()=>{
   const file=picker.files?.[0]; if(!file)return;
   if(file.size>32*1024*1024) {statusText('文件超过 32 MB');return;}
@@ -843,22 +847,60 @@ picker.onchange=async()=>{
     else if(action==='path') {const v=JSON.parse(text);validatePath(v.path); setTrack(false); frozenTrackTime=0; state.path=v.path;
       for(const id of controlIds.filter(x=>x.startsWith('track-'))) {const el=$(id) as HTMLInputElement;const value=v.controls?.[id];if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value;else if(typeof value==='string'&&el.type!=='checkbox')el.value=value;}
       localStorage.setItem('beichen-path',text);refreshTrackCoordinates(true);drawMap();statusText(`已导入 ${v.path.length} 个路径点及运动参数`);}
-    else {stopReplay();replay=replaySentences(text);replayIndex=0;($('replay-run') as HTMLButtonElement).disabled=false;statusText(`已加载 ${replay.length} 条报文，等待开始回放`);}
+    else {stopReplay();replay=replayRecords(text);replayIndex=0;updateReplayProgress();($('replay-run') as HTMLButtonElement).disabled=false;statusText(`已加载 ${replay.length} 条报文，等待开始回放`);}
   } catch(e) {statusText(e instanceof Error?e.message:String(e));}
 };
-const replayNetwork=document.createElement('label');replayNetwork.innerHTML='<input type="checkbox" id="replay-network"/> 回放时向网络发送';$('replay-ms').parentElement!.after(replayNetwork);
+const replayNetwork=document.createElement('label');replayNetwork.innerHTML='<input type="checkbox" id="replay-network"/> 回放时向网络发送';$('replay-rate').parentElement!.after(replayNetwork);
 $('replay-stop').onclick=()=>{stopReplay();statusText(`回放已停止 ${replayIndex}/${replay.length}`);};
+function updateReplayProgress(){
+  const progress=$('replay-progress') as HTMLProgressElement;progress.max=Math.max(1,replay.length);progress.value=replayIndex;
+  $('replay-count').textContent=`${replayIndex} / ${replay.length}`;
+}
 $('replay-run').onclick=()=>{
-  setRunning(false); stopReplay(); replayIndex=0; ($('replay-run') as HTMLButtonElement).disabled=true; ($('replay-stop') as HTMLButtonElement).disabled=false;
+  setRunning(false); stopReplay(); replayIndex=0;updateReplayProgress();
+  replayTimes=replayTimeline(replay,Math.max(.1,numInput('replay-rate',10)));
+  replayClock=new ReplayClock(performance.now(),replaySpeed);
+  const generation=replayGeneration;
+  ($('replay-run') as HTMLButtonElement).disabled=true; ($('replay-stop') as HTMLButtonElement).disabled=false;
+  ($('load-replay') as HTMLButtonElement).disabled=true;($('replay-rate') as HTMLInputElement).disabled=true;
   const network=($('replay-network') as HTMLInputElement).checked;
+  let busy=false;
   const tick=async()=>{
-    const sentence=replay[replayIndex++]; pushRow('接收',sentence,'文件回放');
-    if(network) { try { const cfg={...netConfig(),sentence}; const result=window.beidou?await window.beidou.send(cfg):await(await fetch('./api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json(); if(result.ok===false||result.tcpError)throw new Error(result.error||result.tcpError);pushRow('发送',sentence,'文件回放网络发送'); }catch(e){stopReplay();statusText(`回放发送失败：${String(e)}`);return;} }
-    statusText(`回放 ${replayIndex}/${replay.length}`);
-    if(($('replay-stop') as HTMLButtonElement).disabled)return;
-    if(replayIndex<replay.length)replayTimer=window.setTimeout(()=>void tick(),Math.max(10,numInput('replay-ms',100)));else stopReplay();
-  }; void tick();
+    if(busy||generation!==replayGeneration||!replayClock)return;
+    busy=true;let count=0;
+    try {
+      while(replayIndex<replay.length && replayTimes[replayIndex]<=replayClock.time(performance.now()) && count++<100){
+        if(generation!==replayGeneration)return;
+        const sentence=replay[replayIndex++].sentence;pushRow('接收',sentence,'文件回放');
+        if(network){const cfg={...netConfig(),sentence};
+          const result=window.beidou?await window.beidou.send(cfg):await(await fetch('./api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json();
+          if(generation!==replayGeneration)return;
+          if(result.ok===false||result.tcpError)throw new Error(result.error||result.tcpError);
+          pushRow('发送',sentence,'文件回放网络发送');
+        }
+      }
+      if(generation!==replayGeneration)return;
+      updateReplayProgress();statusText(`回放 ${replayIndex}/${replay.length} · ${replaySpeed}×`);
+      if(replayIndex>=replay.length){stopReplay();return;}
+      replayTimer=window.setTimeout(()=>void tick(),Math.max(1,Math.min(50,(replayTimes[replayIndex]-replayClock.time(performance.now()))/replaySpeed)));
+    }catch(e){if(generation===replayGeneration){stopReplay();statusText(`回放发送失败：${String(e)}`);}}
+    finally{busy=false;}
+  };wakeReplay=()=>{clearTimeout(replayTimer);void tick();};void tick();
 };
+function setReplaySpeed(speed:number){
+  replayClock?.setSpeed(speed,performance.now());replaySpeed=speed;
+  ($('replay-speed') as HTMLInputElement).value=String(speedToSlider(speed));
+  $('replay-speed').setAttribute('aria-valuetext',`${speed} 倍速`);
+  $('replay-speed-value').textContent=`${speed}×`;
+  const rate=Math.max(.1,numInput('replay-rate',10));
+  $('replay-hint').textContent=`${speed}×：按日志时间缩放；普通文本目标 ${(rate*speed).toFixed(1)} 条/秒，实际受机器与网络吞吐限制`;
+  wakeReplay?.();
+}
+$('replay-speed').addEventListener('input',()=>setReplaySpeed(sliderToSpeed(Number(($('replay-speed') as HTMLInputElement).value))));
+$('replay-normal').onclick=()=>setReplaySpeed(1);
+$('replay-rate').addEventListener('input',()=>setReplaySpeed(replaySpeed));
+for(const speed of [10,20,25,40,50,100,200,500]){const b=document.createElement('button');b.type='button';b.textContent=`${speed}×`;b.onclick=()=>setReplaySpeed(speed);$('replay-stops').appendChild(b);}
+setReplaySpeed(1);
 function mode(simple: boolean) { document.body.classList.toggle('simple',simple);$('mode-simple').setAttribute('aria-pressed',String(simple));$('mode-config').setAttribute('aria-pressed',String(!simple)); }
 $('mode-simple').onclick=()=>mode(true);$('mode-config').onclick=()=>mode(false);
 $('quick-start').onclick=async()=>{stopReplay();setTrack(false);frozenTrackTime=0;applyDataset('static-rtk');($('udp-on') as HTMLInputElement).checked=true;($('tcp-on') as HTMLInputElement).checked=false;($('use-sys-time') as HTMLInputElement).checked=true;await joinGroup();setRunning(true);};

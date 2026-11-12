@@ -18,3 +18,13 @@ export function replaySentences(text: string): string[] {
   if(!rows.length || rows.length>100000) throw new Error('报文文件应包含 1 至 100000 条报文');
   return rows;
 }
+
+export type ReplayRecord = {sentence:string; timestamp:number|null};
+export function replayRecords(text: string): ReplayRecord[] {
+  const lines=text.split(/\r?\n/).filter(x=>x.trim());
+  const sentences=replaySentences(text);
+  return sentences.map((sentence,i)=>{const line=lines[i].trim();let timestamp=null;
+    if(line.startsWith('{')){const row=JSON.parse(line);const t=Date.parse(row.timestamp);if(Number.isFinite(t))timestamp=t;}
+    return {sentence,timestamp};
+  });
+}
