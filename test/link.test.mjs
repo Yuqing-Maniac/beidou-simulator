@@ -133,3 +133,15 @@ test('same interface sends identical multicast and unicast datagrams and disable
   const only=await session.send(SENTENCE);assert.deepEqual(only.channels,['unicast']);await waitFor(()=>unicast.length===2);
   const off=await session.send(SENTENCE,{unicastEnabled:false});assert.equal(off.ok,false);
 });
+
+test('two sessions share one multicast port while another UDP application keeps using the interface', async (t) => {
+ const iface=defaultIface();const a=createSession(),b=createSession();const external=dgram.createSocket('udp4');
+ t.after(()=>{a.close();b.close();external.close();});
+ await new Promise(r=>external.bind(0,iface,r));
+ const seenA=[],seenB=[],outside=[];a.onPacket(p=>seenA.push(p.sentence));b.onPacket(p=>seenB.push(p.sentence));external.on('message',p=>outside.push(p.toString('latin1')));
+ const cfg={iface,host:'224.100.100.2',port:16040,udpEnabled:true};
+ await a.listen(cfg);await b.listen(cfg);
+ await a.send(SENTENCE,{unicastEnabled:true,unicastHost:iface,unicastPort:external.address().port});
+ await waitFor(()=>seenA.includes(SENTENCE)&&seenB.includes(SENTENCE)&&outside.includes(SENTENCE));
+ assert.equal(external.address().address,iface);
+});

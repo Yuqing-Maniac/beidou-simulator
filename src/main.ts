@@ -804,6 +804,7 @@ function restore(text: string) {
   state.datasetId=v.datasetId; state.tokens={...v.tokens}; state.path=v.path; state.checksumOverride=v.checksumOverride;
   for(const id of controlIds) { const el=$(id) as HTMLInputElement; const value=v.controls[id]; if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value; else if(typeof value==='string'&&el.type!=='checkbox')el.value=value; }
   state.previewMotion=Boolean(dataset().motion); state.mapTrail=[];
+  updateRateHint();
   state.savedTime=null; renderDataset(); renderFields(); renderWire(); drawMap(); void joinGroup();
 }
 function guarded(action: ()=>void) { try { action(); } catch(e) { statusText(e instanceof Error?e.message:String(e)); } }
@@ -877,3 +878,9 @@ $('fullscreen-toggle').onclick=async()=>{
 document.addEventListener('fullscreenchange',()=>void updateFullscreenLabel());
 window.addEventListener('resize',()=>void updateFullscreenLabel());
 void updateFullscreenLabel();
+
+function updateRateHint() {
+  const hz=numInput('rate',10);
+  $('rate-hint').textContent=hz>0?`${hz} 条/秒 = 每 ${(1000/hz).toFixed(1).replace(/\.0$/,'')} 毫秒发送一条`:'请输入大于 0 的发送频率';
+}
+$('rate').addEventListener('input',updateRateHint);updateRateHint();

@@ -18,31 +18,23 @@
         <button type="button" id="tab-track" class="tab" aria-pressed="false">场景地图</button>
         <button type="button" id="tab-proto" class="tab" aria-pressed="false">协议约定</button>
       <button type="button" id="opening-preview" class="tab">开场回看</button><button type="button" id="fullscreen-toggle" class="tab">退出全屏 · F11</button><button type="button" id="help-open" class="tab">使用说明</button></nav>
-      <form class="transport" id="transport">
-        <label>组播地址<input id="host" value="224.100.100.1" spellcheck="false" /></label>
-        <label>端口<input id="port" value="6020" inputmode="numeric" /></label>
-        <label title="选择网卡后，程序对该地址发送 IGMP 加入，并打开本机环回。">网卡<select id="iface"></select></label>
-        <label title="发送率不在协议表内。10 Hz 是工具建议。">发送率 Hz<input id="rate" value="10" inputmode="decimal" /></label>
-      </form>
+      <section class="network-panel" aria-label="网络连接配置">
+        <div class="network-common"><label>共用网卡<select id="iface"></select></label><label>发送频率（条/秒）<input id="rate" value="10" inputmode="decimal"/></label><span id="rate-hint">10 条/秒 = 每 100 毫秒发送一条</span><label><input id="use-sys-time" type="checkbox"/> 使用系统时间</label></div>
+        <div class="network-channels">
+          <fieldset><legend><label><input id="udp-on" type="checkbox" checked/> UDP 组播</label></legend><label>组播地址<input id="host" value="224.100.100.1"/></label><label>端口<input id="port" value="6020"/></label></fieldset>
+          <fieldset><legend><label><input id="unicast-on" type="checkbox"/> UDP 单播</label></legend><label>对端地址<input id="unicast-host" value="127.0.0.1"/></label><label>端口<input id="unicast-port" value="6022"/></label></fieldset>
+          <fieldset><legend><label><input id="tcp-on" type="checkbox"/> TCP</label></legend><label>模式<select id="tcp-mode"><option value="client">客户端</option><option value="server">服务端</option></select></label><label>对端地址<input id="tcp-host" value="127.0.0.1"/></label><label>端口<input id="tcp-port" value="6021"/></label></fieldset>
+        </div><div class="network-foot"><span id="link-status">等待连接</span><span>共用网卡，不修改系统网络配置；组播端口允许复用，其他软件也需开启端口复用。</span></div><p id="net-status" hidden></p>
+      </section>
     </header>
 
     <section class="workspace-bar"><div><strong>导航联调工作台</strong><p>选择场景 → 确认网卡 → 开始测试</p></div><div class="mode-switch"><button id="mode-simple" aria-pressed="true">Type 1 · 快速测试</button><button id="mode-config" aria-pressed="false">Type 2 · 完整配置</button></div></section>
 <section class="utilities"><button id="save-config">保存配置</button><button id="load-config">导入配置</button><button id="export-log">导出日志</button><button id="load-replay">打开报文文件</button><button id="replay-run" disabled>开始回放</button><button id="replay-stop" disabled>停止回放</button><label>回放间隔 ms <input id="replay-ms" type="number" min="10" value="100"/></label><span id="file-status" role="status"></span><input type="file" id="file-picker" hidden/></section>
 <main id="board">
-      <section class="linkbar" aria-label="传输与时间">
-        <label><input id="udp-on" type="checkbox" checked /> UDP 组播</label>
-<label><input id="unicast-on" type="checkbox"/> UDP 单播</label><label>单播对端<input id="unicast-host" value="127.0.0.1"/></label><label>单播端口<input id="unicast-port" value="6022"/></label>
-        <label><input id="tcp-on" type="checkbox" /> TCP</label>
-        <label>TCP<select id="tcp-mode"><option value="client">客户端</option><option value="server">服务端</option></select></label>
-        <label>对端<input id="tcp-host" value="127.0.0.1" spellcheck="false" /></label>
-        <label>TCP口<input id="tcp-port" value="6021" inputmode="numeric" /></label>
-        <span id="link-status">UDP 待加入</span>
-        <label title="每句读取本机时钟写入 GPS Week 与 GPS Time。GPS = UTC + 18 秒。闰秒是工具建议，表内未规定。"><input id="use-sys-time" type="checkbox" /> 使用系统时间 <em>工具建议</em></label>
-      </section>
       <section class="toolbar">
         <div class="dataset-heading"><span>01 / 测试数据集</span><h2>选择一个场景，立即生成导航报文</h2><p>正常工况、状态异常、协议故障均已预置；故障场景用于验证接收端容错。</p><button id="quick-start">一键开始测试 · 静止 RTK</button></div><div class="sets" id="dataset-list" role="listbox" aria-label="测试数据集"></div>
         <p id="dataset-purpose" class="purpose"></p>
-        <p id="net-status" class="net-status" hidden></p>
+
         <div class="send">
           <button type="button" id="send-once">发送一次</button>
           <button type="button" id="send-run" aria-pressed="false">连续发送</button>
@@ -62,7 +54,7 @@
         <button type="button" id="track-clear">清除路径</button><button id="save-path">保存路径</button><button id="load-path">导入路径</button>
         <span id="track-readout"></span>
       </section>
-      <p class="track-note">离线仿真场地底图，金色为已行轨迹，绿色为预览轨迹。车辆从静止加速，转弯联动横滚与侧向加速度。手绘模式下点击地图加点。航向沿切线。Gyro Z 只写入航向变化率，单位仍是未规定。经纬按十进制度，小数 8 位。</p>
+      <p class="track-note">离线仿真场地底图，金色为已行轨迹，绿色为预览轨迹。车辆从静止加速，转弯联动横滚与侧向加速度。手绘模式下点击地图加点。航向沿切线。Gyro Z 只写入航向变化率，单位仍是未规定。输入可切换小数度、度分秒、度分千分；线上报文始终为十进制度、小数 8 位。</p>
       <canvas id="track-map" width="1240" height="620"></canvas><p class="map-attribution">离线试验场示意底图 · 道路、建筑、水域均为仿真场地，不代表真实地理。<span id="map-status"></span></p>
     </section>
       <section class="wire" aria-label="线上报文">
