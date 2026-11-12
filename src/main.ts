@@ -1,9 +1,9 @@
+import { mountTutorial } from "./tutorial.ts";
 import { ReplayClock, replayTimeline, speedToSlider, sliderToSpeed } from "./replay.ts";
 import { coordinate, parseCoordinate, type CoordinateFormat } from "./coordinates.ts";
 import { drawBasemap } from "./basemap.ts";
 import { mountStartup } from "./startup.ts";
 import { parseWorkspace, validatePath, replayRecords, type ReplayRecord } from "./workspace.ts";
-import helpText from "../docs/guide.txt?raw";
 import { DATASETS, type Dataset } from "./datasets.ts";
 import {
   FIELDS,
@@ -904,7 +904,7 @@ setReplaySpeed(1);
 function mode(simple: boolean) { document.body.classList.toggle('simple',simple);$('mode-simple').setAttribute('aria-pressed',String(simple));$('mode-config').setAttribute('aria-pressed',String(!simple)); }
 $('mode-simple').onclick=()=>mode(true);$('mode-config').onclick=()=>mode(false);
 $('quick-start').onclick=async()=>{stopReplay();setTrack(false);frozenTrackTime=0;applyDataset('static-rtk');($('udp-on') as HTMLInputElement).checked=true;($('tcp-on') as HTMLInputElement).checked=false;($('use-sys-time') as HTMLInputElement).checked=true;await joinGroup();setRunning(true);};
-$('help-content').textContent=helpText;
+
 $('help-open').onclick=()=>($('help-dialog') as HTMLDialogElement).showModal();$('help-close').onclick=()=>($('help-dialog') as HTMLDialogElement).close();
 mountStartup();
 void nicsReady.then(() => {
@@ -968,3 +968,5 @@ for(const axis of ['lat','lon'] as const){const el=$('track-'+axis) as HTMLInput
   el.addEventListener('change',event=>{try{const value=parseCoordinate(el.value,axis,(el.dataset.coordFormat??coordFormat()) as CoordinateFormat);el.setCustomValidity('');setTrackCoordinate(axis,value);}catch(e){event.stopImmediatePropagation();el.setCustomValidity(e instanceof Error?e.message:String(e));el.reportValidity();}},true);
 }
 refreshTrackCoordinates(true);
+
+mountTutorial({navigate:show,mode});
