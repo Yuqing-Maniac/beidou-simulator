@@ -214,7 +214,7 @@ function createSession() {
         reject(err);
       };
       socket.once("error", fail);
-      socket.bind(config.port, () => {
+      socket.bind({port:config.port,address:"0.0.0.0",exclusive:false}, () => {
         try {
           socket.setMulticastLoopback(true);
           if (config.iface) socket.addMembership(config.host, config.iface);
