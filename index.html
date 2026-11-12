@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>北斗模拟器</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <h1>北斗模拟器 <small>$GPCHC</small></h1>
+      </div>
+      <nav class="views" aria-label="页面">
+        <button type="button" id="tab-board" class="tab is-on" aria-pressed="true">总览</button>
+        <button type="button" id="tab-track" class="tab" aria-pressed="false">轨迹</button>
+        <button type="button" id="tab-proto" class="tab" aria-pressed="false">协议约定</button>
+      </nav>
+      <form class="transport" id="transport">
+        <label>组播地址<input id="host" value="224.100.100.1" spellcheck="false" /></label>
+        <label>端口<input id="port" value="6020" inputmode="numeric" /></label>
+        <label title="选择网卡后，程序对该地址发送 IGMP 加入，并打开本机环回。">网卡<select id="iface"></select></label>
+        <label title="发送率不在协议表内。10 Hz 是工具建议。">发送率 Hz<input id="rate" value="10" inputmode="decimal" /></label>
+      </form>
+    </header>
+
+    <main id="board">
+      <section class="linkbar" aria-label="传输与时间">
+        <label><input id="udp-on" type="checkbox" checked /> UDP</label>
+        <label><input id="tcp-on" type="checkbox" /> TCP</label>
+        <label>TCP<select id="tcp-mode"><option value="client">客户端</option><option value="server">服务端</option></select></label>
+        <label>对端<input id="tcp-host" value="127.0.0.1" spellcheck="false" /></label>
+        <label>TCP口<input id="tcp-port" value="6021" inputmode="numeric" /></label>
+        <span id="link-status">UDP 待加入</span>
+        <label title="每句读取本机时钟写入 GPS Week 与 GPS Time。GPS = UTC + 18 秒。闰秒是工具建议，表内未规定。"><input id="use-sys-time" type="checkbox" /> 使用系统时间 <em>工具建议</em></label>
+      </section>
+      <section class="toolbar">
+        <div class="sets" id="dataset-list" role="listbox" aria-label="测试数据集"></div>
+        <p id="dataset-purpose" class="purpose"></p>
+        <p id="net-status" class="net-status" hidden></p>
+        <div class="send">
+          <button type="button" id="send-once">发送一次</button>
+          <button type="button" id="send-run" aria-pressed="false">连续发送</button>
+        </div>
+      </section>
+
+      <section class="wire" aria-label="线上报文">
+        <pre id="sentence" class="sentence"></pre>
+        <p id="checksum-line" class="check-line"></p>
+        <p id="checksum-body" class="check-body"></p>
+        <button type="button" id="hex-toggle" class="text-btn">十六进制</button>
+        <pre id="hexdump" class="hex" hidden></pre>
+      </section>
+
+      <section id="groups" class="groups"></section>
+
+      <section class="stream-wrap">
+        <div class="stream-head">
+          <h2>报文流</h2>
+          <form id="paste-form">
+            <label class="paste-label">粘贴接收<input id="paste" spellcheck="false" placeholder="$GPCHC,..." /></label>
+            <button type="submit">解析为接收</button>
+          </form>
+        </div>
+        <div class="stream-grid">
+          <div class="stream-table" id="stream"></div>
+          <div id="parse" class="parse"></div>
+        </div>
+      </section>
+    </main>
+
+    <main id="track" hidden>
+      <section class="track-bar">
+        <label>运动<select id="track-kind"><option value="line">直线巡航</option><option value="circle">圆周</option><option value="eight">8 字</option><option value="path">手绘路径</option></select></label>
+        <label>起点纬<input id="track-lat" value="31.15960455" /></label>
+        <label>起点经<input id="track-lon" value="121.17847990" /></label>
+        <label>航向<input id="track-heading" value="90" /></label>
+        <label>速度 m/s<input id="track-speed" value="10" /></label>
+        <label>半径 m<input id="track-radius" value="80" /></label>
+        <label><input id="track-loop" type="checkbox" checked /> 循环</label>
+        <button type="button" id="track-run" aria-pressed="false">开始运动</button>
+        <button type="button" id="track-clear">清除路径</button>
+        <span id="track-readout"></span>
+      </section>
+      <p class="track-note">离线格网，不加载外网瓦片。手绘模式下点击地图加点。航向沿切线。Gyro Z 只写入航向变化率，单位仍是未规定。经纬按十进制度，小数 8 位。</p>
+      <canvas id="track-map" width="1240" height="620"></canvas>
+    </main>
+    <main id="proto" hidden></main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
