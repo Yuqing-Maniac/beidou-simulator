@@ -1,0 +1,170 @@
+[
+  {
+    "id": "welcome",
+    "file": "welcome.mp3",
+    "duration": 26.856,
+    "textSha256": "addc9aac6dccc138bb492fa3472d27c39efaff9fe66d011da753552da809ab36",
+    "audioSha256": "5518b7688159f076a5951102b6ea5d8cd7a97f3df5a70c562a816d6306f4a627"
+  },
+  {
+    "id": "installation",
+    "file": "installation.mp3",
+    "duration": 24.264,
+    "textSha256": "144dfcb60561a867ea5ba917cca81acbf7f34d78046380402c4b5e1e117cab79",
+    "audioSha256": "62785ec1c28748643fb38dde7a86f291ebdfcd54b99f95f2eb404f1d897e63cd"
+  },
+  {
+    "id": "navigation",
+    "file": "navigation.mp3",
+    "duration": 23.976,
+    "textSha256": "e0b342938f17cf2d2a38921e8608ce7f46adda34d7fc5d3f65e97a40f1e80fb3",
+    "audioSha256": "b007eb55d222cfcd282a21d91ea8ad50fd194245aa53ff8913b262b54e59b5dc"
+  },
+  {
+    "id": "interface",
+    "file": "interface.mp3",
+    "duration": 24.48,
+    "textSha256": "09181da488e1a9379dd8b606a8c46a17e4f5c593eecdc51f1b282e73b5356ed9",
+    "audioSha256": "455c8c4ba88bb80b6e50eabb08039ce9a1424391eadb6f90918fae9d5e514c6e"
+  },
+  {
+    "id": "multicast",
+    "file": "multicast.mp3",
+    "duration": 26.04,
+    "textSha256": "d8d0e16d60ca14475242294d5e8e6a88838302812912b22af56dd1276b403a54",
+    "audioSha256": "73afa4fc02e2d8376b978a66a7de004a3ba8e3e13edb546d12aa3bc02e418685"
+  },
+  {
+    "id": "unicast",
+    "file": "unicast.mp3",
+    "duration": 26.448,
+    "textSha256": "3f6c30c076f7e6af4f8ebfc5e91eae09f77f259548053cd89dd5253f0a39c0a0",
+    "audioSha256": "764c0c737c872f9647d6134304f4b345051fff38902ad49332cb5087971b57cd"
+  },
+  {
+    "id": "tcp-client",
+    "file": "tcp-client.mp3",
+    "duration": 26.184,
+    "textSha256": "57440b7e173104d550153b7f7cd22a5d25f59970812afa41b0d8cfa1cb6dd9ad",
+    "audioSha256": "9213ef13c9826f8481e9e13aab352790d126f334567df6bf60b22eadd1b5419d"
+  },
+  {
+    "id": "tcp-server",
+    "file": "tcp-server.mp3",
+    "duration": 24.96,
+    "textSha256": "d0de2a66b6943e3aba9d7a771da7cf0a11fd4126b9fe1ecc7bc81663f191dd6d",
+    "audioSha256": "b58b5474f731e8df88025e282ee3751043d47ca11a4408a9d8a0bcee41549377"
+  },
+  {
+    "id": "rate-time",
+    "file": "rate-time.mp3",
+    "duration": 24.552,
+    "textSha256": "9aa31dbddb7bb469395c8a274f1edf872fc77d27af70b626be57d0005dea62e0",
+    "audioSha256": "ff6ac3254862a883a947f8d6befeb12c6a70d5f5525c347c4bfa70fe47b2c050"
+  },
+  {
+    "id": "quick-test",
+    "file": "quick-test.mp3",
+    "duration": 26.64,
+    "textSha256": "a81c1a217ffae239ed7fbaa29cb1344ea6e23c7f338a598cb857d7451eca5bfd",
+    "audioSha256": "c72a1a9c44fbaa27c0b10a6502c18e04da1a660859890e5e00a8e93f25706df7"
+  },
+  {
+    "id": "scenarios",
+    "file": "scenarios.mp3",
+    "duration": 24.024,
+    "textSha256": "8a987ac0f5510037bd1e23e5ede580109b20f332a33392f92bb4e58c599ac765",
+    "audioSha256": "c77a30b68187eb6fe35573e7f4727534b0397f8a96be67ffff5ccb4f9225d88c"
+  },
+  {
+    "id": "fields",
+    "file": "fields.mp3",
+    "duration": 24.312,
+    "textSha256": "0e345d800ebcc62f852c73390575f052302e3d926cf9ad518e85b187714b030a",
+    "audioSha256": "5723b92dc62c9915f8e8575134b7775daeae2460f4b492cb4a16e825d7f0cb40"
+  },
+  {
+    "id": "coordinates",
+    "file": "coordinates.mp3",
+    "duration": 26.52,
+    "textSha256": "44d6e9b1aa7bd44454f9ffa049c89bddfa4d32f7d172ad7a9c9e3735fcbf7e91",
+    "audioSha256": "cf12750879165ebcaf67031e3faf02209d9139e6cc8a36809a8f2e365fd26e74"
+  },
+  {
+    "id": "motion",
+    "file": "motion.mp3",
+    "duration": 23.064,
+    "textSha256": "3e87b4cc2d18e088bf073fb0eda9cc81bf4ba3bedf253b7bc0b2b49d76d754f6",
+    "audioSha256": "a10fcaef0df28cd2c43b9f0d3b71231ee61d7e62d3233ea91f8a5662fd484d80"
+  },
+  {
+    "id": "hand-path",
+    "file": "hand-path.mp3",
+    "duration": 25.8,
+    "textSha256": "1811d601c8c60ab0a8e402d24b5d7da2263737b4033b0f44f738b88b2b808305",
+    "audioSha256": "1858b4d6175c5727496baf73763ef82d091729292d05e377079d44738a5c13e7"
+  },
+  {
+    "id": "status",
+    "file": "status.mp3",
+    "duration": 23.256,
+    "textSha256": "1b8e2679f20c6c55df35313e0fbeb65059e6a76a2333ac0da9a54d20a5ada7ce",
+    "audioSha256": "0eeaeadd7a60da99b5ef038015bd681e38441aa2629e974d0644d0ae398b3b61"
+  },
+  {
+    "id": "protocol",
+    "file": "protocol.mp3",
+    "duration": 23.304,
+    "textSha256": "1f7638780670f581b2da2d25fba58d997f0b341cf502f1183ab7ac5e78e98c92",
+    "audioSha256": "bc1a6eb6c40462afda6321e4b511f0a2251f4f4f0d78a5f5c77d839e0934fc4d"
+  },
+  {
+    "id": "stream",
+    "file": "stream.mp3",
+    "duration": 24.312,
+    "textSha256": "360ce0dad10fbd914ed30e842e8c5519ed1ebe666b702b6912d26e816add2f5f",
+    "audioSha256": "c299eecaecb4aa9cfa97a3e16aa5eab93630fc7a6206bbc51ef086b62c018b20"
+  },
+  {
+    "id": "replay",
+    "file": "replay.mp3",
+    "duration": 23.832,
+    "textSha256": "c424d4156a98adec01970139600a046f55ecfd1b0d75dd8f396dd7fb00ec80be",
+    "audioSha256": "eb0abee22dd205e9ebdb3333c9a4bf5b92886fba1fa6adb1a5555ae469658de6"
+  },
+  {
+    "id": "configuration",
+    "file": "configuration.mp3",
+    "duration": 25.824,
+    "textSha256": "6151dd0f762bdf2ef3ca30ef986daff81c0cbb81049db5e547481bdfeecb21dc",
+    "audioSha256": "3f80ba3c622461bb7ac458cc29ed0b09fd047e98cfcc1e49aa59918a80ec63eb"
+  },
+  {
+    "id": "paths-save",
+    "file": "paths-save.mp3",
+    "duration": 25.272,
+    "textSha256": "892925aafdf8375a9fbc32701d1eac782f9b4616d87b082cd3fa83b179fd2b36",
+    "audioSha256": "8e84ff9400753260dd93b53cdbd0f18ff7253aaaa1c312d7c120693fbcf28866"
+  },
+  {
+    "id": "self-test",
+    "file": "self-test.mp3",
+    "duration": 25.056,
+    "textSha256": "b618ae4a51e01c6cf8611cbb08f64cd8cecd3dad23d408a9f8e8dc9d53e7fe48",
+    "audioSha256": "50afb9f8745a900e85e4939a1f017212e9b292b5815606bad53518976d731bbf"
+  },
+  {
+    "id": "troubleshooting",
+    "file": "troubleshooting.mp3",
+    "duration": 22.848,
+    "textSha256": "502b54c0823279a4d330806fccee2fa74f8702dea02e6bef44a5cf5d4c1c22ec",
+    "audioSha256": "25ec7f09163f9e87501dea3a02bfeb71c91caf793327cc94038aa43f018625c2"
+  },
+  {
+    "id": "acceptance",
+    "file": "acceptance.mp3",
+    "duration": 26.4,
+    "textSha256": "9dcf1fa2d26aeb13c21f83ab15ca06ea9f516081320b1031cc12793bb5842743",
+    "audioSha256": "4a613f8fa19911a0fc0d02318902137bb8401ccb7f33794e951acbd66706e74a"
+  }
+]
