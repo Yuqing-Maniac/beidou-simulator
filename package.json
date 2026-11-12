@@ -1,15 +1,15 @@
 {
   "name": "beidou-simulator",
-  "version": "0.2.0-test",
+  "version": "0.3.0-test",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
-  "description": "北斗模拟器。华测 $GPCHC 组播发送与接收。",
+  "description": "北辰导航模拟器：华测 $GPCHC 收发、离线轨迹与联调工具。",
   "author": "北斗模拟器 <beidou-simulator@localhost>",
   "homepage": "https://localhost/beidou-simulator",
   "scripts": {
     "start": "vite --host 127.0.0.1 --port 43123 --strictPort",
-    "test": "node --experimental-strip-types --test --test-force-exit test/protocol.test.ts test/motion.test.ts && node --test --test-force-exit test/multicast.test.mjs test/link.test.mjs",
+    "test": "node --experimental-strip-types --test --test-force-exit test/protocol.test.ts test/motion.test.ts test/workspace.test.ts && node --test --test-force-exit test/multicast.test.mjs test/link.test.mjs",
     "build": "vite build",
     "pack:linux": "vite build && electron-builder --linux deb tar.gz AppImage",
     "pack:win": "vite build && electron-builder --win zip portable"
@@ -21,7 +21,7 @@
   },
   "build": {
     "appId": "local.beidou.simulator",
-    "productName": "北斗模拟器",
+    "productName": "北辰导航模拟器",
     "executableName": "beidou-simulator",
     "directories": {
       "output": "release"
@@ -41,7 +41,8 @@
       "maintainer": "北斗模拟器 <beidou-simulator@localhost>",
       "artifactName": "beidou-simulator-${version}-kylin-v10-${arch}.${ext}",
       "synopsis": "北斗模拟器",
-      "description": "华测 $GPCHC 组播模拟器。安装包面向银河麒麟 V10 x86_64（glibc 2.28）。运行时为 Electron 22。"
+      "description": "华测 $GPCHC 组播模拟器。安装包面向银河麒麟 V10 x86_64（glibc 2.28）。运行时为 Electron 22。",
+      "icon": "public/icon.png"
     },
     "win": {
       "signAndEditExecutable": false,

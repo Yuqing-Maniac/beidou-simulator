@@ -8,7 +8,8 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "北斗模拟器",
+    title: "北辰 · 导航模拟器",
+    icon: path.join(__dirname, "../dist/icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

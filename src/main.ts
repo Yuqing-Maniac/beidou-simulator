@@ -1,3 +1,5 @@
+import { parseWorkspace, validatePath, replaySentences } from "./workspace.ts";
+import helpText from "../docs/guide.txt?raw";
 import { DATASETS, type Dataset } from "./datasets.ts";
 import {
   FIELDS,
@@ -20,7 +22,7 @@ import {
   warningMask,
   type Tokens,
 } from "./gpchc.ts";
-import { formatTrackTokens, latLonToMeters, metersToLatLon, sampleTrack, type LatLon, type TrackSpec } from "./track.ts";
+import { formatTrackTokens, latLonToMeters, metersToLatLon, sampleTrack, sampleDynamics, type LatLon, type TrackSpec } from "./track.ts";
 
 type StreamRow = {
   id: number;
@@ -30,6 +32,7 @@ type StreamRow = {
   note: string;
 };
 
+const archive: (StreamRow & { timestamp: string })[] = [];
 const state = {
   datasetId: DATASETS[0].id,
   tokens: { ...DATASETS[0].tokens } as Tokens,
@@ -77,7 +80,7 @@ function renderDataset() {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "set" + (d.id === state.datasetId ? " is-on" : "") + (d.fault ? " is-fault" : "");
-    b.textContent = d.name;
+    b.innerHTML = `<span class="scenario-tag">${d.fault ? "协议故障" : d.id === "official" ? "协议基准" : "工况模拟"}</span><strong>${escapeHtml(d.name)}</strong><small>${escapeHtml(d.purpose)}</small>`;
     b.setAttribute("role", "option");
     b.setAttribute("aria-selected", d.id === state.datasetId ? "true" : "false");
     b.addEventListener("click", () => applyDataset(d.id));
@@ -258,6 +261,8 @@ function pushRow(dir: StreamRow["dir"], sentence: string, note: string) {
     sentence,
     note,
   };
+  archive.push({ ...row, timestamp: new Date().toISOString() });
+  if (archive.length > 100000) archive.shift();
   state.rows.unshift(row);
   state.rows = state.rows.slice(0, 30);
   state.selectedRow = row.id;
@@ -422,7 +427,8 @@ function stampLive() {
     state.tokens.sow = next.sow;
   }
   if (state.trackOn) {
-    const text = formatTrackTokens(sampleTrack(trackSpec(), (performance.now() - state.trackT0) / 1000));
+    const motion = liveMotion((performance.now() - state.trackT0) / 1000);
+    const text = { ...formatTrackTokens(motion), pitch: motion.pitch.toFixed(2), roll: motion.roll.toFixed(2), ax: motion.ax.toFixed(4), ay: motion.ay.toFixed(4), az: motion.az.toFixed(4) };
     Object.assign(state.tokens, text);
   }
   if (useTime || state.trackOn) {
@@ -563,6 +569,8 @@ function trackSpec(): TrackSpec {
   return { kind: kind as "line" | "circle" | "eight", lat, lon, headingDeg, speedMps, radiusM };
 }
 
+function liveMotion(t: number) { return sampleDynamics(trackSpec(), t, numInput("track-accel", 2)); }
+
 function drawMap() {
   const canvas = $("track-map") as HTMLCanvasElement;
   const ctx = canvas.getContext("2d");
@@ -578,7 +586,7 @@ function drawMap() {
   ctx.fillRect(0, 0, w, h);
   const spec = trackSpec();
   const elapsed = state.trackOn ? (performance.now() - state.trackT0) / 1000 : 0;
-  const now = sampleTrack(spec, elapsed);
+  const now = liveMotion(state.trackOn ? elapsed : frozenTrackTime);
   const preview: LatLon[] = [];
   const steps = spec.kind === "path" ? Math.max(2, spec.points.length * 8) : 80;
   const horizon = spec.kind === "line" ? 20 : spec.kind === "path" ? 60 : (2 * Math.PI * Math.max(1, numInput("track-radius", 80))) / Math.max(0.1, numInput("track-speed", 10));
@@ -657,7 +665,9 @@ function drawMap() {
   $("track-readout").textContent = `Lat ${text.lat}  Lon ${text.lon}  航向 ${text.heading}  Ve ${text.ve}  Vn ${text.vn}  V_2D ${text.v2d}`;
 }
 
+let frozenTrackTime = 0;
 function setTrack(on: boolean) {
+  if (!on && state.trackOn) frozenTrackTime = (performance.now() - state.trackT0)/1000;
   state.trackOn = on;
   window.cancelAnimationFrame(state.trackFrame);
   const button = $("track-run");
@@ -665,7 +675,7 @@ function setTrack(on: boolean) {
   button.classList.toggle("is-on", on);
   button.setAttribute("aria-pressed", on ? "true" : "false");
   if (!on) return;
-  state.trackT0 = performance.now();
+  state.trackT0 = performance.now() - frozenTrackTime * 1000;
   const loop = () => {
     if (!state.trackOn) return;
     stampLive();
@@ -697,8 +707,9 @@ $("track-clear").addEventListener("click", () => {
   state.path.push(metersToLatLon(view.origin, east, north));
   drawMap();
 });
-for (const id of ["track-kind", "track-lat", "track-lon", "track-heading", "track-speed", "track-radius", "track-loop"]) {
+for (const id of ["track-accel", "track-kind", "track-lat", "track-lon", "track-heading", "track-speed", "track-radius", "track-loop"]) {
   $(id).addEventListener("change", () => {
+    frozenTrackTime = 0;
     if (state.trackOn) state.trackT0 = performance.now();
     drawMap();
   });
@@ -749,4 +760,72 @@ if (window.beidou) {
   const events = new EventSource("./api/events");
   events.onmessage = (ev) => acceptLive(JSON.parse(ev.data) as LivePacket);
 }
-void refreshNics().then(() => joinGroup());
+const nicsReady = refreshNics();
+
+const controlIds = ['host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
+const statusText = (text: string) => { $('file-status').textContent = text; };
+function download(name: string, content: string, type = 'application/json') {
+  const url = URL.createObjectURL(new Blob([content],{type}));
+  const a = document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function snapshot() {
+  const controls: Record<string,string|boolean> = {};
+  for(const id of controlIds) { const el=$(id) as HTMLInputElement; controls[id]=el.type==='checkbox'?el.checked:el.value; }
+  return {version:1 as const,datasetId:state.datasetId,tokens:state.tokens,controls,path:state.path,checksumOverride:state.checksumOverride};
+}
+function restore(text: string) {
+  const v=parseWorkspace(text);
+  if(!DATASETS.some(d=>d.id===v.datasetId)) throw new Error('未知的数据集');
+  setRunning(false); setTrack(false); stopReplay(); frozenTrackTime=0;
+  state.datasetId=v.datasetId; state.tokens={...v.tokens}; state.path=v.path; state.checksumOverride=v.checksumOverride;
+  for(const id of controlIds) { const el=$(id) as HTMLInputElement; const value=v.controls[id]; if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value; else if(typeof value==='string'&&el.type!=='checkbox')el.value=value; }
+  state.savedTime=null; renderDataset(); renderFields(); renderWire(); drawMap(); void joinGroup();
+}
+function guarded(action: ()=>void) { try { action(); } catch(e) { statusText(e instanceof Error?e.message:String(e)); } }
+$('save-config').onclick=()=>guarded(()=>{ const text=JSON.stringify(snapshot(),null,2); localStorage.setItem('beichen-config',text); download('beichen-config.json',text); statusText('配置已保存到本机并导出'); });
+let fileAction: 'config'|'path'|'replay'='config';
+const picker=$('file-picker') as HTMLInputElement;
+function pick(action: typeof fileAction) { fileAction=action; picker.accept=action==='replay'?'.txt,.log,.jsonl':'.json'; picker.value=''; picker.click(); }
+$('load-config').onclick=()=>pick('config');
+$('load-path').onclick=()=>pick('path');
+$('load-replay').onclick=()=>pick('replay');
+$('save-path').onclick=()=>guarded(()=>{ const text=JSON.stringify({version:1,path:state.path,controls:Object.fromEntries(Object.entries(snapshot().controls).filter(([k])=>k.startsWith('track-')))},null,2); localStorage.setItem('beichen-path',text); download('beichen-path.json',text); statusText('路径和运动参数已保存'); });
+$('export-log').onclick=()=>{ download('beichen-log.jsonl',archive.map(x=>JSON.stringify(x)).join('\n'),'application/x-ndjson'); statusText(`已导出 ${archive.length} 条记录（本次会话最多保留 100000 条）`); };
+let replay: string[]=[]; let replayTimer=0; let replayIndex=0;
+function stopReplay() { clearTimeout(replayTimer); replayTimer=0; ($('replay-run') as HTMLButtonElement).disabled=!replay.length; ($('replay-stop') as HTMLButtonElement).disabled=true; }
+picker.onchange=async()=>{
+  const file=picker.files?.[0]; if(!file)return;
+  if(file.size>32*1024*1024) {statusText('文件超过 32 MB');return;}
+  const action=fileAction;
+  try { const text=await file.text();
+    if(action==='config') {restore(text);localStorage.setItem('beichen-config',text);statusText('配置已导入');}
+    else if(action==='path') {const v=JSON.parse(text);validatePath(v.path); setTrack(false); frozenTrackTime=0; state.path=v.path;
+      for(const id of controlIds.filter(x=>x.startsWith('track-'))) {const el=$(id) as HTMLInputElement;const value=v.controls?.[id];if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value;else if(typeof value==='string'&&el.type!=='checkbox')el.value=value;}
+      localStorage.setItem('beichen-path',text);drawMap();statusText(`已导入 ${v.path.length} 个路径点及运动参数`);}
+    else {stopReplay();replay=replaySentences(text);replayIndex=0;($('replay-run') as HTMLButtonElement).disabled=false;statusText(`已加载 ${replay.length} 条报文，等待开始回放`);}
+  } catch(e) {statusText(e instanceof Error?e.message:String(e));}
+};
+const replayNetwork=document.createElement('label');replayNetwork.innerHTML='<input type="checkbox" id="replay-network"/> 回放时向网络发送';$('replay-ms').parentElement!.after(replayNetwork);
+$('replay-stop').onclick=()=>{stopReplay();statusText(`回放已停止 ${replayIndex}/${replay.length}`);};
+$('replay-run').onclick=()=>{
+  setRunning(false); stopReplay(); replayIndex=0; ($('replay-run') as HTMLButtonElement).disabled=true; ($('replay-stop') as HTMLButtonElement).disabled=false;
+  const network=($('replay-network') as HTMLInputElement).checked;
+  const tick=async()=>{
+    const sentence=replay[replayIndex++]; pushRow('接收',sentence,'文件回放');
+    if(network) { try { const cfg={...netConfig(),sentence}; const result=window.beidou?await window.beidou.send(cfg):await(await fetch('./api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json(); if(result.ok===false||result.tcpError)throw new Error(result.error||result.tcpError);pushRow('发送',sentence,'文件回放网络发送'); }catch(e){stopReplay();statusText(`回放发送失败：${String(e)}`);return;} }
+    statusText(`回放 ${replayIndex}/${replay.length}`);
+    if(($('replay-stop') as HTMLButtonElement).disabled)return;
+    if(replayIndex<replay.length)replayTimer=window.setTimeout(()=>void tick(),Math.max(10,numInput('replay-ms',100)));else stopReplay();
+  }; void tick();
+};
+function mode(simple: boolean) { document.body.classList.toggle('simple',simple);$('mode-simple').setAttribute('aria-pressed',String(simple));$('mode-config').setAttribute('aria-pressed',String(!simple)); }
+$('mode-simple').onclick=()=>mode(true);$('mode-config').onclick=()=>mode(false);
+$('quick-start').onclick=async()=>{stopReplay();setTrack(false);frozenTrackTime=0;applyDataset('static-rtk');($('udp-on') as HTMLInputElement).checked=true;($('tcp-on') as HTMLInputElement).checked=false;($('use-sys-time') as HTMLInputElement).checked=true;await joinGroup();setRunning(true);};
+$('help-content').textContent=helpText;
+$('help-open').onclick=()=>($('help-dialog') as HTMLDialogElement).showModal();$('help-close').onclick=()=>($('help-dialog') as HTMLDialogElement).close();
+const dismissSplash=()=>{ $('splash').remove(); };$('skip-splash').onclick=dismissSplash;setTimeout(()=>{if(document.getElementById('splash'))dismissSplash();},2200);
+void nicsReady.then(() => {
+try {const saved=localStorage.getItem('beichen-config');if(saved){restore(saved);statusText('已恢复本机配置；发送保持停止');}else {const path=localStorage.getItem('beichen-path');if(path){const v=JSON.parse(path);validatePath(v.path);state.path=v.path;for(const id of controlIds.filter(x=>x.startsWith('track-'))){const el=$(id) as HTMLInputElement;const value=v.controls?.[id];if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value;else if(typeof value==='string'&&el.type!=='checkbox')el.value=value;}drawMap();}}}catch{statusText('本机保存的数据不可用，可重新导入');}
+
+void joinGroup();
+}).catch(e => statusText(`网卡初始化失败：${String(e)}`));

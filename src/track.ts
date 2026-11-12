@@ -159,3 +159,20 @@ export function formatTrackTokens(sample: TrackSample): {
     gz: sample.gyroZ.toFixed(2),
   };
 }
+
+/** Constant longitudinal acceleration to cruise speed; local flat-earth test model. */
+export function sampleDynamics(spec: TrackSpec, tSec: number, acceleration = 2) {
+  const t = Math.max(0,tSec);
+  const target = Math.max(0,spec.speedMps);
+  const a = Math.max(0.1,acceleration);
+  const ramp = target / a;
+  const speed = Math.min(target,a*t);
+  const distance = t < ramp ? a*t*t/2 : target*(t-ramp/2);
+  const sample = sampleTrack(spec,target > 0 ? distance/target : 0);
+  const ratio = target > 0 ? speed/target : 0;
+  sample.ve *= ratio; sample.vn *= ratio; sample.v2d *= ratio; sample.gyroZ *= ratio;
+  const lateral = speed * sample.gyroZ * Math.PI/180;
+  const forward = sample.v2d>0 && t<ramp ? a : 0;
+  return { ...sample, pitch: Math.atan2(forward,9.80665)*180/Math.PI,
+    roll: -Math.atan2(lateral,9.80665)*180/Math.PI, ax: lateral/9.80665, ay: forward/9.80665, az: 1 };
+}

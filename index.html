@@ -3,19 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>北斗模拟器</title>
+    <title>北辰 · 导航模拟器</title>
+<link rel="icon" href="/icon.svg" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
-  <body>
+  <body class="simple">
+<div id="splash" aria-label="北辰启动"><img src="/icon.svg" alt="北辰图标"/><h1>北辰</h1><p>导航模拟器 · 让每一次联调有迹可循</p><button id="skip-splash">进入工作台</button></div>
     <header class="top">
       <div class="brand">
-        <h1>北斗模拟器 <small>$GPCHC</small></h1>
+        <h1><img src="/icon.svg" class="brand-icon" alt=""/>北辰 <small>导航模拟器</small></h1>
       </div>
       <nav class="views" aria-label="页面">
         <button type="button" id="tab-board" class="tab is-on" aria-pressed="true">总览</button>
         <button type="button" id="tab-track" class="tab" aria-pressed="false">轨迹</button>
         <button type="button" id="tab-proto" class="tab" aria-pressed="false">协议约定</button>
-      </nav>
+      <button type="button" id="help-open" class="tab">使用说明</button></nav>
       <form class="transport" id="transport">
         <label>组播地址<input id="host" value="224.100.100.1" spellcheck="false" /></label>
         <label>端口<input id="port" value="6020" inputmode="numeric" /></label>
@@ -24,7 +26,9 @@
       </form>
     </header>
 
-    <main id="board">
+    <section class="workspace-bar"><div><strong>导航联调工作台</strong><p>选择场景 → 确认网卡 → 开始测试</p></div><div class="mode-switch"><button id="mode-simple" aria-pressed="true">Type 1 · 快速测试</button><button id="mode-config" aria-pressed="false">Type 2 · 完整配置</button></div></section>
+<section class="utilities"><button id="save-config">保存配置</button><button id="load-config">导入配置</button><button id="export-log">导出日志</button><button id="load-replay">打开报文文件</button><button id="replay-run" disabled>开始回放</button><button id="replay-stop" disabled>停止回放</button><label>回放间隔 ms <input id="replay-ms" type="number" min="10" value="100"/></label><span id="file-status" role="status"></span><input type="file" id="file-picker" hidden/></section>
+<main id="board">
       <section class="linkbar" aria-label="传输与时间">
         <label><input id="udp-on" type="checkbox" checked /> UDP</label>
         <label><input id="tcp-on" type="checkbox" /> TCP</label>
@@ -35,7 +39,7 @@
         <label title="每句读取本机时钟写入 GPS Week 与 GPS Time。GPS = UTC + 18 秒。闰秒是工具建议，表内未规定。"><input id="use-sys-time" type="checkbox" /> 使用系统时间 <em>工具建议</em></label>
       </section>
       <section class="toolbar">
-        <div class="sets" id="dataset-list" role="listbox" aria-label="测试数据集"></div>
+        <div class="dataset-heading"><span>01 / 测试数据集</span><h2>选择一个场景，立即生成导航报文</h2><p>正常工况、状态异常、协议故障均已预置；故障场景用于验证接收端容错。</p><button id="quick-start">一键开始测试 · 静止 RTK</button></div><div class="sets" id="dataset-list" role="listbox" aria-label="测试数据集"></div>
         <p id="dataset-purpose" class="purpose"></p>
         <p id="net-status" class="net-status" hidden></p>
         <div class="send">
@@ -76,16 +80,17 @@
         <label>起点经<input id="track-lon" value="121.17847990" /></label>
         <label>航向<input id="track-heading" value="90" /></label>
         <label>速度 m/s<input id="track-speed" value="10" /></label>
-        <label>半径 m<input id="track-radius" value="80" /></label>
+        <label>加速度 m/s²<input id="track-accel" type="number" min="0.1" value="2" step="0.1" /></label><label>半径 m<input id="track-radius" value="80" /></label>
         <label><input id="track-loop" type="checkbox" checked /> 循环</label>
         <button type="button" id="track-run" aria-pressed="false">开始运动</button>
-        <button type="button" id="track-clear">清除路径</button>
+        <button type="button" id="track-clear">清除路径</button><button id="save-path">保存路径</button><button id="load-path">导入路径</button>
         <span id="track-readout"></span>
       </section>
-      <p class="track-note">离线格网，不加载外网瓦片。手绘模式下点击地图加点。航向沿切线。Gyro Z 只写入航向变化率，单位仍是未规定。经纬按十进制度，小数 8 位。</p>
+      <p class="track-note">离线局部米制地图。车辆从静止加速，转弯联动横滚与侧向加速度。手绘模式下点击地图加点。航向沿切线。Gyro Z 只写入航向变化率，单位仍是未规定。经纬按十进制度，小数 8 位。</p>
       <canvas id="track-map" width="1240" height="620"></canvas>
     </main>
     <main id="proto" hidden></main>
-    <script type="module" src="/src/main.ts"></script>
+    <dialog id="help-dialog"><button id="help-close">关闭说明</button><article id="help-content"></article></dialog>
+<script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-# 北斗模拟器
+# 北辰 · 导航模拟器
 
 本地查看华测 `$GPCHC` ASCII 报文。界面按协议表逐项列出字段、范围、线上原文、校验和告警位。默认通过 UDP 组播发到 `224.100.100.1:6020`。
 
@@ -16,9 +16,13 @@ npm start
 
 `npm start` 同时提供页面和组播收发。桌面包装的是同一套页面，组播走 Electron 主进程，不经过这个 HTTP 接口。
 
-测试包版本是 `0.2.0-test`。银河麒麟 V10 x86_64 用 Electron 22（主程序最高依赖 GLIBC_2.17）。UDP 与 TCP 可同时打开。轨迹页是离线格网。
+测试包版本是 `0.3.0-test`。银河麒麟 V10 x86_64 用 Electron 22（主程序最高依赖 GLIBC_2.17）。UDP 与 TCP 可同时打开。轨迹页是离线格网。
 
 ```bash
 npm run pack:linux
 npm run pack:win
 ```
+
+新增快速测试／完整配置、启动动画、本机配置与路径存档、JSON 导入导出、JSONL 日志、报文文件回放及简化加速转弯模型。详细说明可在界面点击“使用说明”，或查看 `docs/guide.txt`。
+
+Windows 64 位测试包在 [v0.3.0-test Release](https://github.com/Yuqing-Maniac/beidou-simulator/releases/tag/v0.3.0-test) 下载：便携 EXE 双击运行，或将 ZIP 完整解压后运行其中的 `beidou-simulator.exe`。
