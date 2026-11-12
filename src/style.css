@@ -352,3 +352,5 @@ button:disabled { opacity:.45; cursor:default; }
 
 @media(max-width:1050px){.network-channels{grid-template-columns:1fr;}.network-channels fieldset{align-items:center;}.network-foot{line-height:1.7;}}@media(prefers-reduced-motion:reduce){#splash *{animation:none!important;}}
 .simple .network-panel #tcp-host{display:block;}
+.field[data-key=lat] input,.field[data-key=lon] input{grid-column:1/-1;width:100%;}.track-bar #track-lat,.track-bar #track-lon{width:190px;}
+input:invalid{border-color:var(--bad);}

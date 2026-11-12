@@ -1,4 +1,4 @@
-import { coordinate, type CoordinateFormat } from "./coordinates.ts";
+import { coordinate, parseCoordinate, type CoordinateFormat } from "./coordinates.ts";
 import { drawBasemap } from "./basemap.ts";
 import { mountStartup } from "./startup.ts";
 import { parseWorkspace, validatePath, replaySentences } from "./workspace.ts";
@@ -175,15 +175,27 @@ function fieldRow(key: string) {
     <div class="issue"></div>
   `;
   const input = wrap.querySelector("input") as HTMLInputElement;
-  input.value = key === "header" ? "$GPCHC" : state.tokens[key] ?? "";
+  input.value = key === "header" ? "$GPCHC" : key==="lat"||key==="lon" ? coordinateInput(state.tokens[key],key) : state.tokens[key] ?? "";
+  if(key==="lat"||key==="lon") input.dataset.coordFormat=coordFormat();
   input.readOnly = key === "header";
-  if(key==='lat'||key==='lon') input.addEventListener('change',()=>{const n=Number(input.value);if(input.value.trim()&&Number.isFinite(n)&&Math.abs(n)<=(key==='lat'?90:180)){state.tokens[key]=n.toFixed(8);input.value=state.tokens[key];if(!state.trackOn)($("track-"+key) as HTMLInputElement).value=state.tokens[key];refreshDerived();renderWire();drawMap();}});
   input.addEventListener("input", () => {
     if (key === "header") return;
-    state.tokens[key] = input.value.trim();
-    state.checksumOverride = undefined;
-    refreshDerived();
-    renderWire();drawMap();
+    if(key==='lat'||key==='lon') {
+      try {
+        const n=parseCoordinate(input.value,key,(input.dataset.coordFormat??coordFormat()) as CoordinateFormat);
+        input.setCustomValidity('');state.tokens[key]=n.toFixed(8);
+      } catch(e) {
+        const message=e instanceof Error?e.message:String(e);input.setCustomValidity(message);
+        (wrap.querySelector('.issue') as HTMLElement).textContent=message;return;
+      }
+    } else state.tokens[key] = input.value.trim();
+    state.checksumOverride = undefined;refreshDerived();renderWire();drawMap();
+  });
+  if(key==='lat'||key==='lon') input.addEventListener('change',()=>{
+    if(!input.checkValidity()){input.reportValidity();return;}
+    input.value=coordinateInput(state.tokens[key],key);
+    if(!state.trackOn) setTrackCoordinate(key,Number(state.tokens[key]));
+    drawMap();
   });
   return wrap;
 }
@@ -206,8 +218,9 @@ function refreshDerived() {
     const row = document.querySelector(`.field[data-key="${f.key}"]`);
     if (!row) continue;
     const input = row.querySelector("input") as HTMLInputElement;
-    if (document.activeElement !== input) {
-      input.value = f.key === "header" ? "$GPCHC" : state.tokens[f.key] ?? "";
+    if (document.activeElement !== input && !input.validity.customError) {
+      input.value = f.key === "header" ? "$GPCHC" : f.key==="lat"||f.key==="lon" ? coordinateInput(state.tokens[f.key],f.key) : state.tokens[f.key] ?? "";
+      if(f.key==="lat"||f.key==="lon")input.dataset.coordFormat=coordFormat();
     }
     const token = f.key === "header" ? "$GPCHC" : state.tokens[f.key] ?? "";
     const issues = fieldIssues(f.key, token);
@@ -574,7 +587,8 @@ function show(view: "board" | "proto" | "track") {
 }
 
 function numInput(id: string, fallback: number): number {
-  const n = Number(($(id) as HTMLInputElement).value);
+  const el=$(id) as HTMLInputElement;
+  const n = Number((id==="track-lat"||id==="track-lon") ? el.dataset.decimal??el.value : el.value);
   return Number.isFinite(n) ? n : fallback;
 }
 
@@ -794,7 +808,7 @@ function download(name: string, content: string, type = 'application/json') {
 }
 function snapshot() {
   const controls: Record<string,string|boolean> = {};
-  for(const id of controlIds) { const el=$(id) as HTMLInputElement; controls[id]=el.type==='checkbox'?el.checked:el.value; }
+  for(const id of controlIds) { const el=$(id) as HTMLInputElement; controls[id]=el.type==='checkbox'?el.checked:(id==='track-lat'||id==='track-lon')?String(numInput(id,0)):el.value; }
   return {version:1 as const,datasetId:state.datasetId,tokens:state.tokens,controls,path:state.path,checksumOverride:state.checksumOverride};
 }
 function restore(text: string) {
@@ -803,6 +817,7 @@ function restore(text: string) {
   setRunning(false); setTrack(false); stopReplay(); frozenTrackTime=0;
   state.datasetId=v.datasetId; state.tokens={...v.tokens}; state.path=v.path; state.checksumOverride=v.checksumOverride;
   for(const id of controlIds) { const el=$(id) as HTMLInputElement; const value=v.controls[id]; if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value; else if(typeof value==='string'&&el.type!=='checkbox')el.value=value; }
+  refreshTrackCoordinates(true);
   state.previewMotion=Boolean(dataset().motion); state.mapTrail=[];
   updateRateHint();
   state.savedTime=null; renderDataset(); renderFields(); renderWire(); drawMap(); void joinGroup();
@@ -827,7 +842,7 @@ picker.onchange=async()=>{
     if(action==='config') {restore(text);localStorage.setItem('beichen-config',text);statusText('配置已导入');}
     else if(action==='path') {const v=JSON.parse(text);validatePath(v.path); setTrack(false); frozenTrackTime=0; state.path=v.path;
       for(const id of controlIds.filter(x=>x.startsWith('track-'))) {const el=$(id) as HTMLInputElement;const value=v.controls?.[id];if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value;else if(typeof value==='string'&&el.type!=='checkbox')el.value=value;}
-      localStorage.setItem('beichen-path',text);drawMap();statusText(`已导入 ${v.path.length} 个路径点及运动参数`);}
+      localStorage.setItem('beichen-path',text);refreshTrackCoordinates(true);drawMap();statusText(`已导入 ${v.path.length} 个路径点及运动参数`);}
     else {stopReplay();replay=replaySentences(text);replayIndex=0;($('replay-run') as HTMLButtonElement).disabled=false;statusText(`已加载 ${replay.length} 条报文，等待开始回放`);}
   } catch(e) {statusText(e instanceof Error?e.message:String(e));}
 };
@@ -851,14 +866,19 @@ $('help-content').textContent=helpText;
 $('help-open').onclick=()=>($('help-dialog') as HTMLDialogElement).showModal();$('help-close').onclick=()=>($('help-dialog') as HTMLDialogElement).close();
 mountStartup();
 void nicsReady.then(() => {
-try {const saved=localStorage.getItem('beichen-config');if(saved){restore(saved);statusText('已恢复本机配置；发送保持停止');}else {const path=localStorage.getItem('beichen-path');if(path){const v=JSON.parse(path);validatePath(v.path);state.path=v.path;for(const id of controlIds.filter(x=>x.startsWith('track-'))){const el=$(id) as HTMLInputElement;const value=v.controls?.[id];if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value;else if(typeof value==='string'&&el.type!=='checkbox')el.value=value;}drawMap();}}}catch{statusText('本机保存的数据不可用，可重新导入');}
+try {const saved=localStorage.getItem('beichen-config');if(saved){restore(saved);statusText('已恢复本机配置；发送保持停止');}else {const path=localStorage.getItem('beichen-path');if(path){const v=JSON.parse(path);validatePath(v.path);state.path=v.path;for(const id of controlIds.filter(x=>x.startsWith('track-'))){const el=$(id) as HTMLInputElement;const value=v.controls?.[id];if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value;else if(typeof value==='string'&&el.type!=='checkbox')el.value=value;}refreshTrackCoordinates(true);drawMap();}}}catch{statusText('本机保存的数据不可用，可重新导入');}
 
 void joinGroup();
 }).catch(e => statusText(`网卡初始化失败：${String(e)}`));
 
 function coordFormat(): CoordinateFormat { return ($('coord-format') as HTMLSelectElement).value as CoordinateFormat; }
 $('map-source').onchange=()=>drawMap();
-$('coord-format').onchange=()=>{refreshDerived();drawMap();renderStream();};
+let previousCoordFormat=coordFormat();
+$('coord-format').onchange=()=>{
+  const invalid=document.querySelector<HTMLInputElement>('.field input:invalid, #track-lat:invalid, #track-lon:invalid');
+  if(invalid){($('coord-format') as HTMLSelectElement).value=previousCoordFormat;invalid.reportValidity();return;}
+  previousCoordFormat=coordFormat();refreshDerived();refreshTrackCoordinates();drawMap();renderStream();
+};
 $('stream-freeze').onclick=()=>{state.streamFrozen=!state.streamFrozen;$('stream-freeze').textContent=state.streamFrozen?'继续刷新':'暂停刷新';if(!state.streamFrozen)renderStream();};
 $('stream-clear').onclick=()=>{state.rows=[];renderStream();};
 $('opening-preview').onclick=()=>{const el=document.createElement('div');el.id='splash';document.body.appendChild(el);mountStartup();};
@@ -884,3 +904,25 @@ function updateRateHint() {
   $('rate-hint').textContent=hz>0?`${hz} 条/秒 = 每 ${(1000/hz).toFixed(1).replace(/\.0$/,'')} 毫秒发送一条`:'请输入大于 0 的发送频率';
 }
 $('rate').addEventListener('input',updateRateHint);updateRateHint();
+
+function coordinateInput(token:string,axis:'lat'|'lon'):string {
+  const result=token?.trim()?coordinate(Number(token),axis,coordFormat()):'坐标无效';
+  return result==='坐标无效'?token??'':result;
+}
+function setTrackCoordinate(axis:'lat'|'lon',value:number) {
+  const el=$('track-'+axis) as HTMLInputElement;
+  el.dataset.decimal=String(value);el.dataset.coordFormat=coordFormat();
+  el.value=coordinateInput(String(value),axis);el.placeholder=coordFormat()==='dd'?'31.15960455':coordFormat()==='dm'?'31 09.576 N':'31 09 34.576 N';
+}
+function refreshTrackCoordinates(fromValues=false) {
+  for(const axis of ['lat','lon'] as const){const el=$('track-'+axis) as HTMLInputElement;
+    let value=Number(fromValues?el.value:el.dataset.decimal??el.value);
+    if(!Number.isFinite(value))try{value=parseCoordinate(el.value,axis,(el.dataset.coordFormat??coordFormat()) as CoordinateFormat);}catch{continue;}
+    setTrackCoordinate(axis,value);
+  }
+}
+for(const axis of ['lat','lon'] as const){const el=$('track-'+axis) as HTMLInputElement;
+  el.addEventListener('input',()=>{try{parseCoordinate(el.value,axis,(el.dataset.coordFormat??coordFormat()) as CoordinateFormat);el.setCustomValidity('');}catch(e){el.setCustomValidity(e instanceof Error?e.message:String(e));}});
+  el.addEventListener('change',event=>{try{const value=parseCoordinate(el.value,axis,(el.dataset.coordFormat??coordFormat()) as CoordinateFormat);el.setCustomValidity('');setTrackCoordinate(axis,value);}catch(e){event.stopImmediatePropagation();el.setCustomValidity(e instanceof Error?e.message:String(e));el.reportValidity();}},true);
+}
+refreshTrackCoordinates(true);
