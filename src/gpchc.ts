@@ -248,7 +248,7 @@ export function applySystemTime(tokens: Tokens, enabled: boolean, utcMs: number)
 }
 
 /** GPS = UTC + TOOL_LEAP_SECONDS. Leap seconds are a tool default, not a sheet field. */
-export function gpsWeekTimeFromUtc(utcMs: number): { week: string; sow: string } {
+export function gpsWeekTimeFromUtc(utcMs: number): { week: string; sow: string; clamped: boolean } {
   const gpsMs = utcMs + TOOL_LEAP_SECONDS * 1000;
   const elapsed = (gpsMs - GPS_EPOCH_MS) / 1000;
   let week = Math.floor(elapsed / 604800);
@@ -261,7 +261,8 @@ export function gpsWeekTimeFromUtc(utcMs: number): { week: string; sow: string }
     week -= 1;
     sow = Math.round((sow + 604800) * 100) / 100;
   }
-  return { week: String(week), sow: sow.toFixed(2) };
+  if (week < 0) return { week: "0", sow: "0.00", clamped: true };
+  return { week: String(week), sow: sow.toFixed(2), clamped: false };
 }
 
 export function gpsCalendar(weekToken: string, sowToken: string): { gps: string; utc: string; ok: boolean } {

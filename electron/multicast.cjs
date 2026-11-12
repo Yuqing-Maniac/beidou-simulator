@@ -292,7 +292,13 @@ function createSession() {
       report.ok = false;
       report.error = "组播、单播与 TCP 都未打开";
     }
-    return Promise.all(jobs).then(() => report);
+    return Promise.all(jobs).then(() => {
+      if (report.channels.length === 0) {
+        report.ok = false;
+        if (!report.error) report.error = report.tcpError || "没有通道发出";
+      }
+      return report;
+    });
   }
 
   function onPacket(fn) {
