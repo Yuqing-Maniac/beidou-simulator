@@ -817,7 +817,7 @@ function restore(text: string) {
   setRunning(false); setTrack(false); stopReplay(); frozenTrackTime=0;
   state.datasetId=v.datasetId; state.tokens={...v.tokens}; state.path=v.path; state.checksumOverride=v.checksumOverride;
   for(const id of controlIds) { const el=$(id) as HTMLInputElement; const value=v.controls[id]; if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value; else if(typeof value==='string'&&el.type!=='checkbox')el.value=value; }
-  refreshTrackCoordinates(true);
+  refreshTrackCoordinates(true);previousCoordFormat=coordFormat();
   state.previewMotion=Boolean(dataset().motion); state.mapTrail=[];
   updateRateHint();
   state.savedTime=null; renderDataset(); renderFields(); renderWire(); drawMap(); void joinGroup();
