@@ -27,3 +27,12 @@ test('coordinate display supports eight decimals, signed hemispheres and carry',
  assert.equal(coordinate(12.999999999,'lon','dms'),'13°00′00.000″ E');
  assert.equal(coordinate(91,'lat','dd'),'坐标无效');
 });
+
+import {parseCoordinate} from '../src/coordinates.ts';
+test('coordinate inputs convert DD, DMS and DM into protocol decimal degrees',()=>{
+ assert.equal(parseCoordinate('31.15960455°','lat','dd').toFixed(8),'31.15960455');
+ assert.equal(parseCoordinate('31°09′34.576″ N','lat','dms').toFixed(8),'31.15960444');
+ assert.equal(parseCoordinate('121 10.709 W','lon','dm').toFixed(8),'-121.17848333');
+ assert.equal(parseCoordinate('-0 30 00','lat','dms'),-.5);
+ for(const [text,axis,format] of [['31 60 N','lat','dm'],['91 00 N','lat','dm'],['-31 09 N','lat','dm'],['31 09 E','lat','dm'],['31 09 60','lat','dms'],['','lat','dd']])assert.throws(()=>parseCoordinate(text,axis,format));
+});
