@@ -5,7 +5,7 @@ on:
       tag:
         description: Existing release tag to build
         required: true
-        default: v0.4.0-test
+        default: v0.5.0-test
 permissions:
   contents: write
 jobs:
@@ -30,13 +30,15 @@ jobs:
         shell: pwsh
         run: |
           $env:ELECTRON_ENABLE_LOGGING = '1'
-          $app = Start-Process -FilePath "$PWD/release/win-unpacked/beidou-simulator.exe" -ArgumentList '--disable-gpu', '--enable-logging=stderr' -RedirectStandardError startup-stderr.log -RedirectStandardOutput startup-stdout.log -PassThru
+          $app = Start-Process -FilePath "$PWD/release/win-unpacked/beidou-simulator.exe" -ArgumentList '--disable-gpu', '--enable-logging=stderr', '--remote-debugging-port=9222' -RedirectStandardError startup-stderr.log -RedirectStandardOutput startup-stdout.log -PassThru
           Start-Sleep -Seconds 7
           $app.Refresh()
           if ($app.HasExited) {
             Get-Content startup-stderr.log, startup-stdout.log -ErrorAction SilentlyContinue
             throw "Application exited during startup: $($app.ExitCode)"
           }
+          node scripts/windows-smoke.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged UI smoke test failed' }
           Get-Process -Name beidou-simulator -ErrorAction SilentlyContinue | Stop-Process -Force
       - name: Checksum and publish release assets
         shell: pwsh
