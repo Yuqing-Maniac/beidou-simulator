@@ -10,7 +10,7 @@ permissions:
   contents: write
 jobs:
   windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: Check out release source
         uses: actions/checkout@v4
@@ -29,10 +29,14 @@ jobs:
       - name: Smoke test Windows executable
         shell: pwsh
         run: |
-          $app = Start-Process -FilePath "$PWD/release/win-unpacked/beidou-simulator.exe" -ArgumentList '--disable-gpu' -PassThru
+          $env:ELECTRON_ENABLE_LOGGING = '1'
+          $app = Start-Process -FilePath "$PWD/release/win-unpacked/beidou-simulator.exe" -ArgumentList '--disable-gpu', '--enable-logging=stderr' -RedirectStandardError startup-stderr.log -RedirectStandardOutput startup-stdout.log -PassThru
           Start-Sleep -Seconds 7
           $app.Refresh()
-          if ($app.HasExited) { throw "Application exited during startup: $($app.ExitCode)" }
+          if ($app.HasExited) {
+            Get-Content startup-stderr.log, startup-stdout.log -ErrorAction SilentlyContinue
+            throw "Application exited during startup: $($app.ExitCode)"
+          }
           Get-Process -Name beidou-simulator -ErrorAction SilentlyContinue | Stop-Process -Force
       - name: Checksum and publish release assets
         shell: pwsh
