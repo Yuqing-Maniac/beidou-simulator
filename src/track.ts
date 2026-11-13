@@ -73,15 +73,36 @@ function moving(headingDeg: number, speed: number, lat: number, lon: number, gyr
   return { lat, lon, headingDeg: h, ve, vn, v2d: Math.hypot(ve, vn), gyroZ };
 }
 
+/** Isometric latitude, so a constant east speed tracks 1/cos(lat). */
+function mercator(latDeg: number): number {
+  const s = Math.sin((latDeg * Math.PI) / 180);
+  const clamped = Math.min(1 - 1e-12, Math.max(-1 + 1e-12, s));
+  return 0.5 * Math.log((1 + clamped) / (1 - clamped));
+}
+
+function straightLine(spec: Motion, speed: number, t: number): TrackSample {
+  const h = (spec.headingDeg * Math.PI) / 180;
+  const ve = speed * Math.sin(h);
+  const vn = speed * Math.cos(h);
+  let lat = spec.lat + (vn * t) / M_PER_DEG;
+  if (lat > 90) lat = 90;
+  if (lat < -90) lat = -90;
+  let lon = spec.lon;
+  if (Math.abs(vn) < 1e-6) {
+    const cos = Math.cos((spec.lat * Math.PI) / 180);
+    if (Math.abs(cos) >= POLAR_COS) lon = spec.lon + (ve * t) / (M_PER_DEG * cos);
+  } else {
+    const end = Math.min(89.999, Math.max(-89.999, lat));
+    const start = Math.min(89.999, Math.max(-89.999, spec.lat));
+    lon = spec.lon + (ve / vn) * ((180 / Math.PI) * (mercator(end) - mercator(start)));
+  }
+  return moving(spec.headingDeg, speed, lat, wrapLongitude(lon), 0);
+}
+
 function sampleMotion(spec: Motion, t: number): TrackSample {
   const speed = Math.max(0, spec.speedMps);
   const radius = Math.max(0.001, spec.radiusM);
-  if (spec.kind === "line") {
-    const dist = speed * t;
-    const { east, north } = enu(spec.headingDeg, dist, 0);
-    const p = metersToLatLon(spec, east, north);
-    return moving(spec.headingDeg, speed, p.lat, p.lon, 0);
-  }
+  if (spec.kind === "line") return straightLine(spec, speed, t);
   const omega = speed / radius;
   if (spec.kind === "circle") {
     const alpha = omega * t;

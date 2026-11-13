@@ -30,6 +30,18 @@ test("a drawn path across the antimeridian follows the short arc east", () => {
   assert.ok(sample.ve > 0, String(sample.ve));
 });
 
+test("a high-latitude straight line matches east and north speed", () => {
+  const spec = { kind: "line" as const, lat: 89, lon: 10, headingDeg: 45, speedMps: 50, radiusM: 1 };
+  const sample = sampleTrack(spec, 400);
+  const next = sampleTrack(spec, 400.1);
+  const mid = ((sample.lat + next.lat) / 2) * Math.PI / 180;
+  const vn = ((next.lat - sample.lat) / 0.1) * 111320;
+  const ve = ((next.lon - sample.lon) / 0.1) * 111320 * Math.cos(mid);
+  assert.ok(Math.abs(sample.lat) <= 90 && Math.abs(sample.lon) <= 180);
+  assert.ok(Math.abs(ve - sample.ve) < 0.05, `${ve} vs ${sample.ve}`);
+  assert.ok(Math.abs(vn - sample.vn) < 0.05, `${vn} vs ${sample.vn}`);
+});
+
 test("east of the pole stays a legal coordinate", () => {
   const pole = metersToLatLon({ lat: 90, lon: 12 }, 10, 0);
   const near = metersToLatLon({ lat: 89.999999, lon: 12 }, 1000, 0);
