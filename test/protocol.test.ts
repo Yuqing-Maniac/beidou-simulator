@@ -9,6 +9,7 @@ import {
   encodeSentence,
   fieldIssues,
   gpsCalendar,
+  gpsWeekTimeFromUtc,
   warningMask,
   v2dConsistent,
 } from "../src/gpchc.ts";
@@ -48,6 +49,18 @@ test("status 61 and warning 0102", () => {
   assert.equal((mask! & (1 << 1)) !== 0, true);
   assert.equal((mask! & (1 << 8)) !== 0, true);
   assert.equal((mask! & (1 << 0)) !== 0, false);
+});
+
+test("a clock before the GPS epoch does not emit a negative week", () => {
+  const stamp = gpsWeekTimeFromUtc(Date.UTC(1979, 0, 1));
+  assert.equal(stamp.week, "0");
+  assert.equal(stamp.sow, "0.00");
+  assert.equal(stamp.clamped, true);
+  const sentence = encodeSentence({ ...DATASETS[0].tokens, week: stamp.week, sow: stamp.sow });
+  const decoded = decodeSentence(sentence);
+  assert.equal(decoded.sumOk, true);
+  assert.equal(decoded.tokens.week, "0");
+  assert.equal(Number(decoded.tokens.week) >= 0, true);
 });
 
 test("example GPS week and seconds land on 2025-12-11 07:26:28", () => {

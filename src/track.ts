@@ -26,17 +26,30 @@ export type TrackSpec =
   | { kind: "path"; points: LatLon[]; speedMps: number; loop: boolean };
 
 const M_PER_DEG = 111320;
+/** Below this cosine the local east axis is undefined. Longitude stays put. */
+const POLAR_COS = 1e-6;
+
+export function wrapLongitude(lon: number): number {
+  if (!Number.isFinite(lon)) return 0;
+  const wrapped = (((lon + 180) % 360) + 360) % 360 - 180;
+  return Object.is(wrapped, -0) ? 0 : wrapped;
+}
 
 export function metersToLatLon(origin: LatLon, east: number, north: number): LatLon {
-  const lat = origin.lat + north / M_PER_DEG;
-  const lon = origin.lon + east / (M_PER_DEG * Math.cos((origin.lat * Math.PI) / 180));
+  let lat = origin.lat + north / M_PER_DEG;
+  if (lat > 90) lat = 90;
+  if (lat < -90) lat = -90;
+  const cos = Math.cos((origin.lat * Math.PI) / 180);
+  const lon = Math.abs(cos) < POLAR_COS || !Number.isFinite(east)
+    ? wrapLongitude(origin.lon)
+    : wrapLongitude(origin.lon + east / (M_PER_DEG * cos));
   return { lat, lon };
 }
 
 export function latLonToMeters(origin: LatLon, point: LatLon): { east: number; north: number } {
   return {
     north: (point.lat - origin.lat) * M_PER_DEG,
-    east: (point.lon - origin.lon) * M_PER_DEG * Math.cos((origin.lat * Math.PI) / 180),
+    east: wrapLongitude(point.lon - origin.lon) * M_PER_DEG * Math.cos((origin.lat * Math.PI) / 180),
   };
 }
 
@@ -128,7 +141,7 @@ function samplePath(spec: Extract<TrackSpec, { kind: "path" }>, t: number): Trac
   }
   const u = Math.min(1, cursor / pick.len);
   const lat = pick.a.lat + (pick.b.lat - pick.a.lat) * u;
-  const lon = pick.a.lon + (pick.b.lon - pick.a.lon) * u;
+  const lon = wrapLongitude(pick.a.lon + wrapLongitude(pick.b.lon - pick.a.lon) * u);
   const heading = (Math.atan2(pick.east, pick.north) * 180) / Math.PI;
   return moving(heading, speed, lat, lon, 0);
 }

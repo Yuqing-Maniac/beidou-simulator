@@ -19,7 +19,7 @@
         <button type="button" id="tab-proto" class="tab" aria-pressed="false">协议约定</button>
       <button type="button" id="opening-preview" class="tab">开场回看</button><button type="button" id="fullscreen-toggle" class="tab">退出全屏 · F11</button><button type="button" id="tutorial-open" class="tab tutorial-entry">语音教程</button><button type="button" id="help-open" class="tab">使用说明</button></nav>
       <section class="network-panel" aria-label="网络连接配置">
-        <div class="network-common"><label>共用网卡<select id="iface"></select></label><label>发送频率（条/秒）<input id="rate" value="10" inputmode="decimal"/></label><span id="rate-hint">10 条/秒 = 每 100 毫秒发送一条</span><label><input id="use-sys-time" type="checkbox"/> 使用系统时间</label></div>
+        <div class="network-common"><label>共用网卡<select id="iface"></select></label><label>发送频率（条/秒）<input id="rate" value="10" inputmode="decimal"/></label><span id="rate-hint">10 条/秒 = 每 100 毫秒发送一条</span><label><input id="use-sys-time" type="checkbox"/> 使用系统时间</label><span id="time-hint" role="status"></span></div>
         <div class="network-channels">
           <fieldset><legend><label><input id="udp-on" type="checkbox" checked/> UDP 组播</label></legend><label>组播地址<input id="host" value="224.100.100.1"/></label><label>端口<input id="port" value="6020"/></label></fieldset>
           <fieldset><legend><label><input id="unicast-on" type="checkbox"/> UDP 单播</label></legend><label>对端地址<input id="unicast-host" value="127.0.0.1"/></label><label>端口<input id="unicast-port" value="6022"/></label></fieldset>

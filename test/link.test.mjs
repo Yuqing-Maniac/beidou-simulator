@@ -120,6 +120,36 @@ test("udp and tcp carry the same sentence, and each switch sends only that path"
   outsider.close();
 });
 
+test("tcp alone reports not sent after the peer drops, and does not reconnect", async () => {
+  const iface = defaultIface();
+  const session = createSession();
+  let sock;
+  const server = net.createServer((socket) => {
+    sock = socket;
+  });
+  await new Promise((resolve) => server.listen(16034, iface, resolve));
+  await session.listen({
+    iface,
+    udpEnabled: false,
+    unicastEnabled: false,
+    tcpEnabled: true,
+    tcpMode: "client",
+    tcpHost: iface,
+    tcpPort: 16034,
+  });
+  const live = await session.send(SENTENCE);
+  assert.equal(live.ok, true);
+  assert.deepEqual(live.channels, ["tcp"]);
+  sock.destroy();
+  await new Promise((r) => setTimeout(r, 300));
+  const dead = await session.send(SENTENCE);
+  assert.equal(dead.ok, false);
+  assert.deepEqual(dead.channels, []);
+  assert.match(dead.error, /TCP 无连接/);
+  session.close();
+  server.close();
+});
+
 test('same interface sends identical multicast and unicast datagrams and disables each independently', async (t) => {
   const iface=defaultIface();const session=createSession();const receiver=dgram.createSocket('udp4');
   t.after(()=>{session.close();receiver.close();});

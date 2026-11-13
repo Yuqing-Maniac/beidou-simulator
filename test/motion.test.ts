@@ -1,7 +1,45 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applySystemTime, checksumOf, decodeSentence, encodeSentence, gpsWeekTimeFromUtc } from "../src/gpchc.ts";
-import { formatTrackTokens, sampleTrack } from "../src/track.ts";
+import { formatTrackTokens, metersToLatLon, sampleTrack } from "../src/track.ts";
+
+test("longitude folds into the closed range when a line crosses the antimeridian", () => {
+  const sample = sampleTrack(
+    { kind: "line", lat: 10, lon: 179.999, headingDeg: 90, speedMps: 200, radiusM: 1 },
+    20,
+  );
+  assert.ok(sample.lon <= 180 && sample.lon >= -180, String(sample.lon));
+  assert.ok(sample.lon < 0, String(sample.lon));
+  assert.ok(sample.ve > 0);
+});
+
+test("a drawn path across the antimeridian follows the short arc east", () => {
+  const spec = {
+    kind: "path" as const,
+    speedMps: 10,
+    loop: false,
+    points: [
+      { lat: 0, lon: 179.99 },
+      { lat: 0, lon: -179.99 },
+    ],
+  };
+  const sample = sampleTrack(spec, 1);
+  assert.ok(sample.lon > 179.99 || sample.lon < -179.99, String(sample.lon));
+  assert.ok(Math.abs(sample.lon) <= 180);
+  assert.ok(Math.abs(sample.headingDeg - 90) < 1, String(sample.headingDeg));
+  assert.ok(sample.ve > 0, String(sample.ve));
+});
+
+test("east of the pole stays a legal coordinate", () => {
+  const pole = metersToLatLon({ lat: 90, lon: 12 }, 10, 0);
+  const near = metersToLatLon({ lat: 89.999999, lon: 12 }, 1000, 0);
+  for (const point of [pole, near]) {
+    assert.ok(Number.isFinite(point.lat) && Number.isFinite(point.lon));
+    assert.ok(Math.abs(point.lat) <= 90, String(point.lat));
+    assert.ok(Math.abs(point.lon) <= 180, String(point.lon));
+  }
+  assert.ok(Math.abs(pole.lon - 12) < 1e-6, String(pole.lon));
+});
 
 test("gps week and seconds of week use UTC plus 18 leap seconds", () => {
   const utc = Date.UTC(2025, 11, 11, 7, 26, 10);

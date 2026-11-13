@@ -17,6 +17,7 @@ import {
   encodeSentence,
   fieldIssues,
   gpsCalendar,
+  gpsWeekTimeFromUtc,
   hexDump,
   payloadFromTokens,
   sheetByteAccount,
@@ -453,6 +454,19 @@ async function joinGroup() {
   }
 }
 
+function refreshTimeHint() {
+  const hint = $("time-hint");
+  const on = ($("use-sys-time") as HTMLInputElement).checked;
+  if (!on) {
+    hint.textContent = "";
+    return;
+  }
+  const stamp = gpsWeekTimeFromUtc(Date.now());
+  hint.textContent = stamp.clamped
+    ? "系统时间早于 GPS 起点 1980-01-06，GPS 周钳在 0，周内秒 0.00，不发负周。"
+    : "";
+}
+
 function stampLive() {
   const useTime = ($("use-sys-time") as HTMLInputElement).checked;
   if (useTime) {
@@ -460,6 +474,7 @@ function stampLive() {
     state.tokens.week = next.week;
     state.tokens.sow = next.sow;
   }
+  refreshTimeHint();
   if (state.trackOn) {
     const motion = liveMotion((performance.now() - state.trackT0) / 1000);
     const text = { ...formatTrackTokens(motion), pitch: motion.pitch.toFixed(2), roll: motion.roll.toFixed(2), ax: motion.ax.toFixed(4), ay: motion.ay.toFixed(4), az: motion.az.toFixed(4) };
@@ -775,6 +790,7 @@ for (const id of ["unicast-on", "unicast-host", "unicast-port", "host", "port", 
   $(id).addEventListener("change", () => void joinGroup());
 }
 ($("use-sys-time") as HTMLInputElement).addEventListener("change", () => {
+  refreshTimeHint();
   const on = ($("use-sys-time") as HTMLInputElement).checked;
   if (on) state.savedTime = { week: state.tokens.week ?? "", sow: state.tokens.sow ?? "" };
   else if (state.savedTime) {
