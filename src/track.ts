@@ -135,10 +135,9 @@ function samplePath(spec: Extract<TrackSpec, { kind: "path" }>, t: number): Trac
   const seg: { a: LatLon; b: LatLon; len: number; east: number; north: number }[] = [];
   let total = 0;
   for (let i = 0; i < chain.length - 1; i++) {
-    const d = latLonToMeters(origin, chain[i + 1]);
-    const a = latLonToMeters(origin, chain[i]);
-    const east = d.east - a.east;
-    const north = d.north - a.north;
+    const delta = latLonToMeters(chain[i], chain[i + 1]);
+    const east = delta.east;
+    const north = delta.north;
     const len = Math.hypot(east, north);
     if (len < 0.05) continue;
     seg.push({ a: chain[i], b: chain[i + 1], len, east, north });

@@ -30,6 +30,24 @@ test("a drawn path across the antimeridian follows the short arc east", () => {
   assert.ok(sample.ve > 0, String(sample.ve));
 });
 
+test("a later segment across the antimeridian keeps the short-arc heading", () => {
+  const spec = {
+    kind: "path" as const,
+    speedMps: 100,
+    loop: false,
+    points: [
+      { lat: 0, lon: 0 },
+      { lat: 0, lon: 179 },
+      { lat: 0, lon: -179 },
+    ],
+  };
+  const leg = Math.hypot(179 * 111320, 0);
+  const sample = sampleTrack(spec, leg / 100 + 2);
+  assert.ok(sample.lon > 179 || sample.lon < -179, String(sample.lon));
+  assert.ok(Math.abs(sample.headingDeg - 90) < 1, String(sample.headingDeg));
+  assert.ok(sample.ve > 0, String(sample.ve));
+});
+
 test("a high-latitude straight line matches east and north speed", () => {
   const spec = { kind: "line" as const, lat: 89, lon: 10, headingDeg: 45, speedMps: 50, radiusM: 1 };
   const sample = sampleTrack(spec, 400);
