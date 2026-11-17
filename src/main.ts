@@ -1,3 +1,4 @@
+import { DebugClock, applyOutgoingTime } from "./global-time.ts";
 import { datasetPosition } from "./dataset-motion.ts";
 import { mountTutorial } from "./tutorial.ts";
 import { ReplayClock, replayTimeline, speedToSlider, sliderToSpeed } from "./replay.ts";
@@ -15,6 +16,7 @@ import {
   decodeSentence,
   decodeStatus,
   applySystemTime,
+  GPS_EPOCH_MS, TOOL_LEAP_SECONDS,
   encodeSentence,
   fieldIssues,
   gpsCalendar,
@@ -38,6 +40,7 @@ type StreamRow = {
   note: string;
 };
 
+const globalClock=new DebugClock();globalClock.system();
 let streamTimer=0;
 const archive: (StreamRow & { timestamp: string })[] = [];
 const state = {
@@ -77,6 +80,7 @@ function applyDataset(id: string) {
   setRunning(false);setTrack(false);state.positionSeed=null;state.lastPosition=null;state.distance=0; frozenTrackTime=0; state.mapTrail=[]; state.previewMotion=Boolean(d.motion);
   state.datasetId = d.id;
   state.tokens = { ...d.tokens };
+  stampGlobalTime();
   state.checksumOverride = d.checksumOverride;
   if (d.motion) ($('track-kind') as HTMLSelectElement).value=d.motion;
   if(Math.abs(Number(d.tokens.lat))<=90&&Math.abs(Number(d.tokens.lon))<=180) {
@@ -197,6 +201,10 @@ function fieldRow(key: string) {
         (wrap.querySelector('.issue') as HTMLElement).textContent=message;return;
       }
     } else state.tokens[key] = input.value.trim();
+    if(key==='week'||key==='sow'){
+      const week=Number(state.tokens.week),sow=Number(state.tokens.sow);
+      if(Number.isInteger(week)&&week>=0&&Number.isFinite(sow)&&sow>=0&&sow<604800){globalClock.manual(GPS_EPOCH_MS+(week*604800+sow-TOOL_LEAP_SECONDS)*1000,performance.now(),0);syncClockUi();}
+    }
     state.checksumOverride = undefined;refreshDerived();renderWire();drawMap();
   });
   if(key==='lat'||key==='lon') input.addEventListener('change',()=>{
@@ -467,19 +475,14 @@ function refreshTimeHint() {
     hint.textContent = "";
     return;
   }
-  const stamp = gpsWeekTimeFromUtc(Date.now());
+  const stamp = gpsWeekTimeFromUtc(globalClock.utc(Date.now(),performance.now())??Date.now());
   hint.textContent = stamp.clamped
     ? "系统时间早于 GPS 起点 1980-01-06，GPS 周钳在 0，周内秒 0.00，不发负周。"
     : "";
 }
 
 function stampLive() {
-  const useTime = ($("use-sys-time") as HTMLInputElement).checked;
-  if (useTime) {
-    const next = applySystemTime(state.tokens, true, Date.now());
-    state.tokens.week = next.week;
-    state.tokens.sow = next.sow;
-  }
+  const useTime=stampGlobalTime();
   refreshTimeHint();
   if (state.trackOn) {
     const motion = liveMotion((performance.now() - state.trackT0) / 1000);
@@ -806,17 +809,9 @@ $("paste-form").addEventListener("submit", (ev) => {
 for (const id of ["unicast-on", "unicast-host", "unicast-port", "host", "port", "iface", "udp-on", "tcp-on", "tcp-mode", "tcp-host", "tcp-port"]) {
   $(id).addEventListener("change", () => void joinGroup());
 }
-($("use-sys-time") as HTMLInputElement).addEventListener("change", () => {
-  refreshTimeHint();
-  const on = ($("use-sys-time") as HTMLInputElement).checked;
-  if (on) state.savedTime = { week: state.tokens.week ?? "", sow: state.tokens.sow ?? "" };
-  else if (state.savedTime) {
-    state.tokens.week = state.savedTime.week;
-    state.tokens.sow = state.savedTime.sow;
-    state.savedTime = null;
-    refreshDerived();
-    renderWire();
-  }
+($('use-sys-time') as HTMLInputElement).addEventListener('change',()=>{
+  if(($('use-sys-time') as HTMLInputElement).checked)globalClock.system();else globalClock.original();
+  syncClockUi();stampGlobalTime();refreshDerived();renderWire();
 });
 
 renderDataset();
@@ -843,18 +838,23 @@ function download(name: string, content: string, type = 'application/json') {
 function snapshot() {
   const controls: Record<string,string|boolean> = {};
   for(const id of controlIds) { const el=$(id) as HTMLInputElement; controls[id]=el.type==='checkbox'?el.checked:(id==='track-lat'||id==='track-lon')?String(numInput(id,0)):el.value; }
-  return {version:1 as const,datasetId:state.datasetId,tokens:state.tokens,controls,path:state.path,checksumOverride:state.checksumOverride};
+  return {version:1 as const,datasetId:state.datasetId,tokens:state.tokens,controls,path:state.path,checksumOverride:state.checksumOverride,globalTime:{source:globalClock.source,utc:globalClock.utc(Date.now(),performance.now()),rate:globalClock.rate}};
 }
 function restore(text: string) {
   const v=parseWorkspace(text);
   if(!DATASETS.some(d=>d.id===v.datasetId)) throw new Error('未知的数据集');
   setRunning(false); setTrack(false); stopReplay(); frozenTrackTime=0;
+  const clockSettings=(v as unknown as {globalTime?:{source:string;utc:number;rate:number}}).globalTime;
+  if(clockSettings?.source==='manual')globalClock.manual(clockSettings.utc,performance.now(),clockSettings.rate);
+  else if(clockSettings?.source==='system'||!clockSettings&&v.controls['use-sys-time']===true)globalClock.system();
+  else globalClock.original();
   state.datasetId=v.datasetId; state.tokens={...v.tokens}; state.path=v.path; state.checksumOverride=v.checksumOverride;
   for(const id of controlIds) { const el=$(id) as HTMLInputElement; const value=v.controls[id]; if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value; else if(typeof value==='string'&&el.type!=='checkbox')el.value=value; }
   refreshTrackCoordinates(true);previousCoordFormat=coordFormat();
   state.previewMotion=Boolean(dataset().motion); state.mapTrail=[];
   setReplaySpeed(sliderToSpeed(Number(($('replay-speed') as HTMLInputElement).value)));
   updateRateHint();
+  syncClockUi();stampGlobalTime();
   state.savedTime=null; renderDataset(); renderFields(); renderWire(); drawMap(); void joinGroup();
 }
 function guarded(action: ()=>void) { try { action(); } catch(e) { statusText(e instanceof Error?e.message:String(e)); } }
@@ -905,11 +905,11 @@ $('replay-run').onclick=()=>{
       while(replayIndex<replay.length && replayTimes[replayIndex]<=replayClock.time(performance.now()) && count++<100){
         if(generation!==replayGeneration)return;
         const sentence=replay[replayIndex++].sentence;pushRow('接收',sentence,'文件回放');
-        if(network){const cfg={...netConfig(),sentence};
+        if(network){const outgoing=applyOutgoingTime(sentence,globalClock.stamp(Date.now(),performance.now()));const cfg={...netConfig(),sentence:outgoing};
           const result=window.beidou?await window.beidou.send(cfg):await(await fetch('./api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json();
           if(generation!==replayGeneration)return;
           if(result.ok===false||result.tcpError)throw new Error(result.error||result.tcpError);
-          pushRow('发送',sentence,'文件回放网络发送');
+          pushRow('发送',outgoing,'文件回放网络发送 · 全局时间来源：'+globalClock.source);
         }
       }
       if(generation!==replayGeneration)return;
@@ -936,7 +936,7 @@ for(const speed of [10,20,25,40,50,100,200,500]){const b=document.createElement(
 setReplaySpeed(1);
 function mode(simple: boolean) { document.body.classList.toggle('simple',simple);$('mode-simple').setAttribute('aria-pressed',String(simple));$('mode-config').setAttribute('aria-pressed',String(!simple)); }
 $('mode-simple').onclick=()=>mode(true);$('mode-config').onclick=()=>mode(false);
-$('quick-start').onclick=async()=>{stopReplay();setTrack(false);frozenTrackTime=0;applyDataset('static-rtk');($('udp-on') as HTMLInputElement).checked=true;($('tcp-on') as HTMLInputElement).checked=false;($('use-sys-time') as HTMLInputElement).checked=true;await joinGroup();setRunning(true);};
+$('quick-start').onclick=async()=>{stopReplay();setTrack(false);frozenTrackTime=0;applyDataset('static-rtk');($('udp-on') as HTMLInputElement).checked=true;($('tcp-on') as HTMLInputElement).checked=false;globalClock.system();syncClockUi();await joinGroup();setRunning(true);};
 
 $('help-open').onclick=()=>($('help-dialog') as HTMLDialogElement).showModal();$('help-close').onclick=()=>($('help-dialog') as HTMLDialogElement).close();
 mountStartup();
@@ -1006,3 +1006,42 @@ mountTutorial({navigate:show,mode});
 
 $('map-zoom').addEventListener('change',drawMap);
 $('advance-position').addEventListener('change',()=>{state.positionSeed=null;state.lastPosition=null;});
+
+function stampGlobalTime():boolean {
+  const stamp=globalClock.stamp(Date.now(),performance.now());
+  if(stamp){state.tokens.week=stamp.week;state.tokens.sow=stamp.sow;}
+  return stamp!==null;
+}
+function localDateValue(utc:number){const d=new Date(utc);return new Date(utc-d.getTimezoneOffset()*60000).toISOString().slice(0,23);}
+function syncClockUi(){
+  ($('clock-source') as HTMLSelectElement).value=globalClock.source;
+  ($('use-sys-time') as HTMLInputElement).checked=globalClock.source!=='original';
+  ($('clock-rate') as HTMLInputElement).value=String(globalClock.rate);
+  $('clock-rate-text').textContent=`${globalClock.rate}×`;
+  $('clock-pause').textContent=globalClock.source==='manual'&&globalClock.rate===0?'继续走时':'暂停时间';
+  const utc=globalClock.utc(Date.now(),performance.now());
+  $('clock-summary').textContent=utc===null?'原句/文件时间，不做替换':`${globalClock.source==='system'?'系统时钟':'指定时间'+(globalClock.rate===0?'（已暂停）':' · '+globalClock.rate+'×')} · ${new Date(utc).toLocaleString('zh-CN',{hour12:false})}`;
+  const stamp=globalClock.stamp(Date.now(),performance.now());
+  for(const [id,value] of [['clock-date',utc===null?'':localDateValue(utc)],['clock-week',stamp?.week??state.tokens.week],['clock-sow',stamp?.sow??state.tokens.sow]]){
+    const input=$(id) as HTMLInputElement;if(document.activeElement!==input)input.value=value;
+  }
+}
+function currentClockUtc(){return globalClock.utc(Date.now(),performance.now())??(GPS_EPOCH_MS+(Number(state.tokens.week)*604800+Number(state.tokens.sow)-TOOL_LEAP_SECONDS)*1000);}
+function commitClock(){for(const id of ['clock-date','clock-week','clock-sow'])($(id) as HTMLInputElement).setCustomValidity('');stampGlobalTime();syncClockUi();refreshTimeHint();refreshDerived();renderWire();}
+$('clock-source').addEventListener('change',()=>{
+  const source=($('clock-source') as HTMLSelectElement).value;
+  if(source==='original')globalClock.original();else if(source==='system')globalClock.system();else globalClock.manual(currentClockUtc(),performance.now(),1);
+  commitClock();
+});
+$('clock-now').onclick=()=>{globalClock.system();commitClock();};
+$('clock-date').addEventListener('change',()=>{const input=$('clock-date') as HTMLInputElement;const utc=new Date(input.value).getTime();if(!Number.isFinite(utc)){input.setCustomValidity('请填写有效日期和时间');input.reportValidity();return;}input.setCustomValidity('');globalClock.manual(utc,performance.now(),0);commitClock();});
+$('clock-rate').addEventListener('input',()=>{globalClock.changeRate(Number(($('clock-rate') as HTMLInputElement).value),currentClockUtc(),performance.now());commitClock();});
+$('clock-pause').onclick=()=>{globalClock.changeRate(globalClock.source==='manual'&&globalClock.rate===0?1:0,currentClockUtc(),performance.now());commitClock();};
+for(const [id,delta] of [['clock-back',-1000],['clock-forward',1000]] as const)$(id).onclick=()=>{globalClock.manual(currentClockUtc()+delta,performance.now(),0);commitClock();};
+for(const id of ['clock-week','clock-sow'])$(id).addEventListener('change',()=>{
+  const week=Number(($('clock-week') as HTMLInputElement).value),sow=Number(($('clock-sow') as HTMLInputElement).value);
+  if(!($('clock-week') as HTMLInputElement).value.trim()||!($('clock-sow') as HTMLInputElement).value.trim()||!Number.isInteger(week)||week<0||week>9999||!Number.isFinite(sow)||sow<0||sow>=604800){($('clock-sow') as HTMLInputElement).setCustomValidity('GPS 周须非负，周内秒须在 0 至 604800 之间');($('clock-sow') as HTMLInputElement).reportValidity();return;}
+  ($('clock-sow') as HTMLInputElement).setCustomValidity('');globalClock.manual(GPS_EPOCH_MS+(week*604800+sow-TOOL_LEAP_SECONDS)*1000,performance.now(),0);commitClock();
+});
+syncClockUi();
+window.setInterval(()=>{syncClockUi();if(globalClock.source!=='original'){stampGlobalTime();refreshTimeHint();refreshDerived();renderWire();}},200);
