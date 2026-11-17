@@ -13,7 +13,12 @@ async function main() {
     ws.send(JSON.stringify({id:next,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));
   });
   try {
-    const initial=await evaluate(`(async()=>({fullscreen:await window.beidou.fullscreen(), ready:document.querySelectorAll('#dataset-list .set').length===15&&typeof document.getElementById('replay-normal')?.onclick==='function'&&typeof document.getElementById('fullscreen-toggle')?.onclick==='function', splashClosed:!document.getElementById('splash')}))()`);
+    let initial;
+    for(let attempt=0;attempt<80;attempt++){
+      initial=await evaluate(`(async()=>({fullscreen:await window.beidou.fullscreen(), ready:document.querySelectorAll('#dataset-list .set').length===15&&typeof document.getElementById('replay-normal')?.onclick==='function'&&typeof document.getElementById('fullscreen-toggle')?.onclick==='function', splashClosed:!document.getElementById('splash')}))()`);
+      if(initial.splashClosed)break;
+      await new Promise(resolve=>setTimeout(resolve,250));
+    }
     if(!initial.fullscreen||!initial.ready||!initial.splashClosed)throw new Error('Startup validation failed: '+JSON.stringify(initial));
     const controls=await evaluate(`(()=>({simple:document.body.classList.contains('simple'),source:document.getElementById('clock-source').value,scenes:[...document.querySelectorAll('#dataset-list .set')].filter(e=>e.getClientRects().length).length,sliders:document.querySelectorAll('.parameter-slider').length,preview:typeof document.getElementById('preview-run').onclick==='function'}))()`);
     if(!controls.simple||controls.source!=='system'||controls.scenes!==8||controls.sliders<15||!controls.preview)throw new Error('Quick controls validation failed: '+JSON.stringify(controls));
