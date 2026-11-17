@@ -8,7 +8,7 @@ if(!app.requestSingleInstanceLock()){app.quit();}else{
   let startup;
   try{startup=updates.resolveStartup(baseRoot,home,runtime);}catch(error){startup={root:baseRoot,candidate:null,rolledBack:true};if(fs.existsSync(path.join(home,'state.json')))fs.renameSync(path.join(home,'state.json'),path.join(home,'state-corrupt-'+Date.now()+'.json'));}
   let preview=null;let healthy=false;let timer=null;
-  const restart=()=>{app.relaunch({execPath:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});app.exit(0);};
+  const restart=()=>updates.restartApplication(app,process.argv,process.env.PORTABLE_EXECUTABLE_FILE);
   const info=()=>{const state=updates.readState(home);return{version:updates.version(startup.root),runtimeVersion:app.getVersion(),platform:runtime.platform,arch:runtime.arch,electronMajor:runtime.electronMajor,pending:state.pending&&!startup.candidate?true:false,canRollback:Boolean(state.previous||state.active||state.pending),rolledBack:startup.rolledBack,baseChanged:Boolean(startup.baseChanged)};};
   function requireOwnWindow(event){const win=BrowserWindow.fromWebContents(event.sender);if(!win||event.sender.getURL().split(/[?#]/)[0]!==require('node:url').pathToFileURL(path.join(startup.root,'dist/index.html')).href)throw new Error('拒绝来自非应用页面的升级请求');return win;}
   const storage=require('./update-storage.cjs');
