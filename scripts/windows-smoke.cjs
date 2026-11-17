@@ -28,7 +28,7 @@ async function main() {
     if(clock.source!=='manual'||clock.week!=='2500'||clock.seconds!=='123.00')throw new Error('Global clock did not survive scene change: '+JSON.stringify(clock));
     console.log('Packaged quick controls and global clock passed:',JSON.stringify({controls,clock}));
     const updater=await evaluate(`window.beidou.updateInfo()`);
-    if(updater.version!=='0.8.0-test'||typeof updater.pending!=='boolean')throw new Error('Incremental update bridge did not initialize: '+JSON.stringify(updater));
+    if(updater.version!=='0.8.1-test'||typeof updater.pending!=='boolean')throw new Error('Incremental update bridge did not initialize: '+JSON.stringify(updater));
     const maps=await evaluate(`(async()=>{const results=[];for(const id of ['beijing','damao','zhanjiang','guangzhou']){const input=document.getElementById('map-region');input.value=id;input.dispatchEvent(new Event('change',{bubbles:true}));for(let i=0;i<40;i++){await new Promise(r=>setTimeout(r,100));if(!document.getElementById('map-status').textContent.includes('加载'))break;}results.push({id,status:document.getElementById('map-status').textContent,attribution:document.getElementById('map-attribution').textContent,lat:Number(document.getElementById('sentence').textContent.split(',')[12])});}document.getElementById('map-region').value='synthetic';document.getElementById('map-region').dispatchEvent(new Event('change',{bubbles:true}));return results;})()`);
     if(maps.some(m=>m.status||!m.attribution.includes('OpenStreetMap'))||maps.length!==4)throw new Error('Packaged offline region loading failed: '+JSON.stringify(maps));
     console.log('Packaged four offline maps and update bridge passed:',JSON.stringify({maps,updater}));

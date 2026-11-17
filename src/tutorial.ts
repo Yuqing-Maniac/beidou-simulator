@@ -115,11 +115,11 @@ export function mountTutorial(hooks:Hooks) {
   window.addEventListener('scroll',positionHighlight,true);window.addEventListener('resize',positionHighlight);
   // Detailed manual with chapter search and an export that remains usable outside the app.
   const manual=byId('help-content');manual.replaceChildren();
-  const heading=el('h1','北辰 0.8.0-test · 详细使用教程');const introduction=el('p',`共 ${chapters.length} 章，包含详细步骤、预期结果、常见问题与离线中文讲解。`);
+  const heading=el('h1','北辰 0.8.1-test · 详细使用教程');const introduction=el('p',`共 ${chapters.length} 章，包含详细步骤、预期结果、常见问题与离线中文讲解。`);
   const tools=el('div');tools.className='manual-tools';
   const search=el('input');search.id='manual-search';search.type='search';search.placeholder='搜索：组播、经纬度、回放、故障……';search.setAttribute('aria-label','搜索详细教程');
   const start=el('button','从第一章开始语音教程');start.onclick=()=>open(0);
-  const download=el('button','下载完整文字教程');download.onclick=()=>{const url=URL.createObjectURL(new Blob(['\uFEFF',manualText],{type:'text/plain;charset=utf-8'}));const a=el('a');a.href=url;a.download='北辰-0.8.0-test-详细使用教程.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+  const download=el('button','下载完整文字教程');download.onclick=()=>{const url=URL.createObjectURL(new Blob(['\uFEFF',manualText],{type:'text/plain;charset=utf-8'}));const a=el('a');a.href=url;a.download='北辰-0.8.1-test-详细使用教程.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   tools.append(search,start,download);const results=el('div');results.id='manual-results';manual.append(heading,introduction,tools,results);
   const renderManual=()=>{
     const query=search.value.trim().toLowerCase();results.replaceChildren();let found=0;

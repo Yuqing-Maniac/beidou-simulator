@@ -1,6 +1,6 @@
 {
   "name": "beidou-simulator",
-  "version": "0.8.0-test",
+  "version": "0.8.1-test",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",

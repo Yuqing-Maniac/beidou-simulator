@@ -16,7 +16,7 @@ npm start
 
 `npm start` 同时提供页面和组播收发。桌面包装的是同一套页面，组播走 Electron 主进程，不经过这个 HTTP 接口。
 
-测试包版本是 `0.8.0-test`。银河麒麟 V10 x86_64 用 Electron 22（主程序最高依赖 GLIBC_2.17）。UDP 与 TCP 可同时打开。地图使用离线仿真场地底图。
+测试包版本是 `0.8.1-test`。银河麒麟 V10 x86_64 用 Electron 22（主程序最高依赖 GLIBC_2.17）。UDP 与 TCP 可同时打开。地图使用离线仿真场地底图。
 
 ```bash
 npm run pack:linux
@@ -25,7 +25,9 @@ npm run pack:win
 
 新增快速测试／完整配置、启动动画、本机配置与路径存档、JSON 导入导出、JSONL 日志、报文文件回放及简化加速转弯模型。详细说明可在界面点击“使用说明”，或查看 `docs/guide.txt`。
 
-Windows 64 位测试包在 [v0.8.0-test Release](https://github.com/Yuqing-Maniac/beidou-simulator/releases/tag/v0.8.0-test) 下载：便携 EXE 双击运行，或将 ZIP 完整解压后运行其中的 `beidou-simulator.exe`。
+Windows 64 位测试包在 [v0.8.1-test Release](https://github.com/Yuqing-Maniac/beidou-simulator/releases/tag/v0.8.1-test) 下载：便携 ZIP 解压后点击 `BeidouSimulator.exe`；麒麟 V10 ARM64 解压后运行 `BeidouSimulator.sh`。
+
+0.8.1-test：新增距离倍增，可按倍数放大速度、加速度和米制半径，输入框仍是基础值；「开始运动」会同时开始连续发送，轨迹页显示当前位置与发送状态；关闭窗口后台节流，最小化后发送频率不再下降。
 
 0.8.0-test：标准数据集与地图同步运动、六场景快速测试、全局调试时间、参数拖条与精确输入，并更新对应文字和离线语音教程。保留完整 Electron 运行时，优先保证兼容性。
 
