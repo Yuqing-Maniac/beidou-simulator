@@ -77,4 +77,10 @@ function resolveStartup(baseRoot,home,runtime={platform:process.platform,arch:pr
 }
 function markHealthy(home,candidate) {if(!candidate)return;const state=readState(home);if(state.pending!==candidate)throw new Error('升级状态已变化');const next={active:candidate,previous:state.active,pending:null,attempted:false,baseIdentity:state.baseIdentity};writeJson(path.join(home,'state.json'),next);const releases=path.join(home,'releases');for(const id of fs.readdirSync(releases)){if(/^[a-f0-9]{32}$/.test(id)&&![next.active,next.previous].includes(id)){try{fs.rmSync(path.join(releases,id),{recursive:true,force:true});}catch{/* Cleanup must never make a healthy activation fail. */}}}}
 function rollback(home) {const state=readState(home);if(state.pending){state.pending=null;state.attempted=false;}else if(state.active){const old=state.active;state.active=state.previous||null;state.previous=old;}else throw new Error('当前没有可回退版本');writeJson(path.join(home,'state.json'),state);}
-module.exports={IMMUTABLE,MAX_BYTES,hash,safePath,inventory,fingerprint,version,writeJson,readState,readPackage,checkBase,stage,resolveStartup,markHealthy,rollback,validateManifest,baseIdentity};
+function restartApplication(app,argv,portableFile) {
+  // Electron 22 drops every original argument if execPath is overridden without args.
+  // Default relaunch preserves Chromium switches exactly; portable launches need the original EXE.
+  if(portableFile)app.relaunch({execPath:portableFile,args:argv.slice(1)});else app.relaunch();
+  app.exit(0);
+}
+module.exports={IMMUTABLE,MAX_BYTES,hash,safePath,inventory,fingerprint,version,writeJson,readState,readPackage,checkBase,stage,resolveStartup,markHealthy,rollback,validateManifest,baseIdentity,restartApplication};
