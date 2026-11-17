@@ -48,3 +48,21 @@ test('speed changes preserve elapsed original time and requested slider stops ar
  const clock=new ReplayClock(0,1);assert.equal(clock.time(200),200);clock.setSpeed(4,200);assert.equal(clock.time(250),400);clock.setSpeed(.25,250);assert.equal(clock.time(650),500);
  for(const speed of [.25,1,10,20,25,40,50,100,200,500])assert.equal(sliderToSpeed(speedToSlider(speed)),speed);
 });
+
+import { DebugClock,applyOutgoingTime } from '../src/global-time.ts';
+import {decodeSentence,encodeSentence} from '../src/gpchc.ts';
+import {DATASETS} from '../src/datasets.ts';
+test('shared debug clock survives scene changes, pause, step and rate changes',()=>{
+ const clock=new DebugClock();const now=Date.UTC(2026,0,1);clock.manual(now,0,1);
+ assert.equal(clock.utc(now,1000),now+1000);clock.changeRate(0,now,1000);assert.equal(clock.utc(now,9000),now+1000);
+ clock.manual(clock.utc(now,9000)!+1000,9000,0);assert.equal(clock.utc(now,12000),now+2000);
+ clock.changeRate(2,now,12000);assert.equal(clock.utc(now,12500),now+3000);
+ for(const scene of DATASETS.slice(0,3)){const stamped=decodeSentence(applyOutgoingTime(encodeSentence(scene.tokens),clock.stamp(now,12500)));assert.equal(stamped.tokens.week,clock.stamp(now,12500)!.week);assert.equal(stamped.sumOk,true);}
+});
+test('outgoing replay uses global time, retains deliberate checksum error and refuses malformed overrides',()=>{
+ const original=encodeSentence(DATASETS[0].tokens);const stamp={week:'2500',sow:'123.00'};
+ const updated=decodeSentence(applyOutgoingTime(original,stamp));assert.equal(updated.tokens.week,'2500');assert.equal(updated.tokens.sow,'123.00');assert.equal(updated.sumOk,true);
+ assert.equal(applyOutgoingTime(original,null),original);
+ const bad=encodeSentence(DATASETS[0].tokens,'00');assert.equal(decodeSentence(applyOutgoingTime(bad,stamp)).sumOk,false);
+ assert.throws(()=>applyOutgoingTime('$GPCHC,1*00\r\n',stamp));assert.equal(applyOutgoingTime('$GPCHC,1*00\r\n',null),'$GPCHC,1*00\r\n');
+});
