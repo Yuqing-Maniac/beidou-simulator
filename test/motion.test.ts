@@ -194,3 +194,58 @@ test('official sentence is unchanged at motion start and very slow motion retain
  const p=datasetPosition(tokens,60)!;assert.notEqual(p.lat,tokens.lat);assert.match(p.lat,/^-?\d+\.\d{8}$/);
  const edge={...tokens,lon:'179.99999999',ve:'10',vn:'0'};assert.ok(Math.abs(Number(datasetPosition(edge,100)!.lon))<=180);
 });
+
+import { latLonToMeters, sampleDynamics } from '../src/track.ts';
+test('periodic stop-go motion has consistent accelerating, cruising, braking and stopped positions', () => {
+  const spec = { kind: 'stop-go' as const, lat: 31, lon: 121, headingDeg: 30, speedMps: 10, radiusM: 50 };
+  // Four 5-second phases; every 20 seconds advances by 100 metres.
+  const speeds = [sampleTrack(spec, 2.5), sampleTrack(spec, 7.5), sampleTrack(spec, 12.5), sampleTrack(spec, 17.5)];
+  assert.deepEqual(speeds.map(p => p.v2d), [5, 10, 5, 0]);
+  assert.deepEqual(speeds.map(p => p.forwardAcceleration), [2, 0, -2, 0]);
+  assert.deepEqual(sampleTrack(spec, 16), sampleTrack(spec, 19));
+  for (const t of [2.5, 7.5, 12.5]) {
+    const p = sampleTrack(spec, t), q = sampleTrack(spec, t + .001);
+    const delta = latLonToMeters(p, q);
+    assert.ok(Math.abs(delta.east / .001 - p.ve) < .01);
+    assert.ok(Math.abs(delta.north / .001 - p.vn) < .01);
+    assert.equal(p.gyroZ, 0);
+  }
+  const cycle = sampleTrack(spec, 20), delta = latLonToMeters(spec, cycle);
+  assert.ok(Math.abs(Math.hypot(delta.east, delta.north) - 100) < .01);
+  assert.equal(sampleTrack(spec, 22.5).v2d, sampleTrack(spec, 2.5).v2d);
+});
+
+test('sinusoidal weaving has repeatable position, coherent tangent velocity and signed yaw rate', () => {
+  const spec = { kind: 'slalom' as const, lat: 31, lon: 121, headingDeg: 20, speedMps: 8, radiusM: 40 };
+  const cycle = 2 * Math.PI * spec.radiusM / spec.speedMps;
+  for (const t of [0, 2, 8, 16, 24]) {
+    const p = sampleTrack(spec, t), q = sampleTrack(spec, t + .001);
+    const delta = latLonToMeters(p, q);
+    assert.ok(Math.abs(delta.east / .001 - p.ve) < .01);
+    assert.ok(Math.abs(delta.north / .001 - p.vn) < .01);
+    const headingChange = ((q.headingDeg - p.headingDeg + 540) % 360) - 180;
+    assert.ok(Math.abs(headingChange / .001 - p.gyroZ) < .002);
+    assert.ok(Math.abs(p.v2d - Math.hypot(p.ve, p.vn)) < 1e-8);
+  }
+  assert.ok(sampleTrack(spec, 0).gyroZ > 0);
+  assert.ok(sampleTrack(spec, cycle / 2).gyroZ < 0);
+  const start = sampleTrack(spec, 0), end = sampleTrack(spec, cycle);
+  assert.ok(Math.abs(end.headingDeg - start.headingDeg) < 1e-6);
+  const delta = latLonToMeters(spec, end), distance = spec.speedMps * cycle;
+  assert.ok(Math.abs(delta.east - Math.sin(spec.headingDeg * Math.PI / 180) * distance) < 1e-6);
+  assert.ok(Math.abs(delta.north - Math.cos(spec.headingDeg * Math.PI / 180) * distance) < 1e-6);
+});
+
+test('new periodic models keep actual velocity and acceleration consistent during startup', () => {
+  for (const kind of ['stop-go', 'slalom'] as const) {
+    const spec = { kind, lat: 31, lon: 121, headingDeg: 15, speedMps: 8, radiusM: 40 };
+    for (const t of [1, 3, 7, 12, 18]) {
+      const p = sampleDynamics(spec, t, 2), q = sampleDynamics(spec, t + .001, 2);
+      const delta = latLonToMeters(p, q);
+      assert.ok(Math.abs(delta.east / .001 - p.ve) < .01, `${kind} east @ ${t}`);
+      assert.ok(Math.abs(delta.north / .001 - p.vn) < .01, `${kind} north @ ${t}`);
+      assert.ok(Math.abs((q.v2d - p.v2d) / .001 - p.ay * 9.80665) < .01, `${kind} forward acceleration @ ${t}`);
+      assert.ok(Number.isFinite(p.pitch) && Number.isFinite(p.roll));
+    }
+  }
+});

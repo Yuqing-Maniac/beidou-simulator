@@ -10,10 +10,12 @@ export type TrackSample = {
   vn: number;
   v2d: number;
   gyroZ: number;
+  /** Signed acceleration along the instantaneous travel direction, m/s². */
+  forwardAcceleration?: number;
 };
 
 type Motion = {
-  kind: "line" | "circle" | "eight";
+  kind: "line" | "circle" | "eight" | "stop-go" | "slalom";
   lat: number;
   lon: number;
   headingDeg: number;
@@ -103,7 +105,47 @@ function sampleMotion(spec: Motion, t: number): TrackSample {
   const speed = Math.max(0, spec.speedMps);
   const radius = Math.max(0.001, spec.radiusM);
   if (spec.kind === "line") return straightLine(spec, speed, t);
+  if (spec.kind === "stop-go") {
+    if (speed === 0) return moving(spec.headingDeg, 0, spec.lat, spec.lon, 0);
+    // Four equal phases: accelerate, cruise, brake, stop. Each lap travels 2r.
+    const phaseSeconds = radius / speed;
+    const cycles = Math.floor(t / (4 * phaseSeconds));
+    const phase = (t % (4 * phaseSeconds)) / phaseSeconds;
+    const acceleration = speed / phaseSeconds;
+    let distance = cycles * 2 * radius;
+    let velocity = 0;
+    let forwardAcceleration = 0;
+    if (phase < 1) {
+      distance += radius * phase * phase / 2;
+      velocity = speed * phase;
+      forwardAcceleration = acceleration;
+    } else if (phase < 2) {
+      distance += radius * (phase - .5);
+      velocity = speed;
+    } else if (phase < 3) {
+      const brake = phase - 2;
+      distance += radius * (1.5 + brake - brake * brake / 2);
+      velocity = speed * (1 - brake);
+      forwardAcceleration = -acceleration;
+    } else distance += 2 * radius;
+    const point = straightLine(spec, 1, distance);
+    return { ...moving(spec.headingDeg, velocity, point.lat, point.lon, 0), forwardAcceleration };
+  }
   const omega = speed / radius;
+  if (spec.kind === "slalom") {
+    // Forward progress with a smooth side-to-side displacement, amplitude r/4.
+    const phase = omega * t;
+    const right = radius * .25 * (1 - Math.cos(phase));
+    const lateralVelocity = speed * .25 * Math.sin(phase);
+    const lateralAcceleration = speed * .25 * omega * Math.cos(phase);
+    const { east, north } = enu(spec.headingDeg, speed * t, right);
+    const point = metersToLatLon(spec, east, north);
+    const velocity = Math.hypot(speed, lateralVelocity);
+    const heading = spec.headingDeg + Math.atan2(lateralVelocity, speed) * 180 / Math.PI;
+    const gyroZ = speed > 0 ? speed * lateralAcceleration / (velocity * velocity) * 180 / Math.PI : 0;
+    const forwardAcceleration = velocity > 0 ? lateralVelocity * lateralAcceleration / velocity : 0;
+    return { ...moving(heading, velocity, point.lat, point.lon, gyroZ), forwardAcceleration };
+  }
   if (spec.kind === "circle") {
     const alpha = omega * t;
     const right = radius * (1 - Math.cos(alpha));
@@ -203,9 +245,13 @@ export function sampleDynamics(spec: TrackSpec, tSec: number, acceleration = 2) 
   const distance = t < ramp ? a*t*t/2 : target*(t-ramp/2);
   const sample = sampleTrack(spec,target > 0 ? distance/target : 0);
   const ratio = target > 0 ? speed/target : 0;
+  // Time-warped curves need both their intrinsic acceleration and startup ramp.
+  const originalSpeed = sample.v2d;
+  const forward = (sample.forwardAcceleration ?? 0) * ratio * ratio
+    + (target > 0 && t < ramp ? originalSpeed * a / target : 0);
   sample.ve *= ratio; sample.vn *= ratio; sample.v2d *= ratio; sample.gyroZ *= ratio;
-  const lateral = speed * sample.gyroZ * Math.PI/180;
-  const forward = sample.v2d>0 && t<ramp ? a : 0;
+  sample.forwardAcceleration = forward;
+  const lateral = sample.v2d * sample.gyroZ * Math.PI/180;
   return { ...sample, pitch: Math.atan2(forward,9.80665)*180/Math.PI,
     roll: -Math.atan2(lateral,9.80665)*180/Math.PI, ax: lateral/9.80665, ay: forward/9.80665, az: 1 };
 }
