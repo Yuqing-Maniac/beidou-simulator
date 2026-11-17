@@ -8,7 +8,7 @@ const el=<K extends keyof HTMLElementTagNameMap>(tag:K,text?:string)=>{const nod
 const byId=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 export function mountTutorial(hooks:Hooks) {
   let index=0,active=false,token=0,timer=0,left=false,collapsed=false;
-  let original:{simple:boolean;view:View;details:boolean;scroll:number}|null=null;
+  let original:{simple:boolean;view:View;details:boolean;scroll:number;folds:{id:string;open:boolean}[]}|null=null;
   let prefs={voice:true,cues:true,auto:false,volume:.8,speed:1};let completed=new Set<string>();
   try{const stored=JSON.parse(localStorage.getItem('beichen-tutorial')??'{}');
     if(typeof stored.voice==='boolean')prefs.voice=stored.voice;if(typeof stored.cues==='boolean')prefs.cues=stored.cues;
@@ -49,7 +49,8 @@ export function mountTutorial(hooks:Hooks) {
     hooks.navigate(chapters[index].view);if(chapters[index].advanced)hooks.mode(false);
     const target=document.querySelector<HTMLElement>(selector);
     if(!target){status('当前控件不可见，可按文字步骤切换界面后再次定位。');return;}
-    const details=target.closest('details');if(details)details.open=true;
+    if(target.getBoundingClientRect().width===0||target.getBoundingClientRect().height===0)hooks.mode(false);
+    for(let parent:HTMLElement|null=target;parent;parent=parent.parentElement){if(parent instanceof HTMLDetailsElement)parent.open=true;}
     targetSelector=selector;target.scrollIntoView({behavior:'instant' as ScrollBehavior,block:'center'});positionHighlight();
   };
   const updateChapterOptions=()=>{
@@ -79,7 +80,7 @@ export function mountTutorial(hooks:Hooks) {
     const current=token;if(autoPlay&&prefs.voice)timer=window.setTimeout(()=>{if(current===token)void play();},prefs.cues?220:0);
   };
   const open=(chapterIndex?:number)=>{
-    if(!active){original={simple:document.body.classList.contains('simple'),view:byId('proto').hidden?'board':'proto',details:document.querySelector<HTMLDetailsElement>('.more')?.open??false,scroll:scrollY};}
+    if(!active){original={simple:document.body.classList.contains('simple'),view:byId('proto').hidden?'board':'proto',details:document.querySelector<HTMLDetailsElement>('.more')?.open??false,scroll:scrollY,folds:[...document.querySelectorAll<HTMLDetailsElement>('details[id]')].map(d=>({id:d.id,open:d.open}))};}
     if(Number.isInteger(chapterIndex))index=Math.max(0,Math.min(chapters.length-1,chapterIndex!));
     const help=byId<HTMLDialogElement>('help-dialog');if(help.open)help.close();
     byId('tutorial-invite')?.remove();try{localStorage.setItem('beichen-tutorial-intro','seen');}catch{}
@@ -87,7 +88,7 @@ export function mountTutorial(hooks:Hooks) {
   };
   const close=()=>{
     active=false;token++;clearTimeout(timer);audio.pause();cue.pause();panel.hidden=true;highlight.hidden=true;targetSelector='';save();
-    if(original){hooks.mode(original.simple);hooks.navigate(original.view);const details=document.querySelector<HTMLDetailsElement>('.more');if(details)details.open=original.details;window.scrollTo(0,original.scroll);original=null;}
+    if(original){hooks.mode(original.simple);hooks.navigate(original.view);const details=document.querySelector<HTMLDetailsElement>('.more');if(details)details.open=original.details;for(const fold of original.folds){const node=document.getElementById(fold.id);if(node instanceof HTMLDetailsElement)node.open=fold.open;}window.scrollTo(0,original.scroll);original=null;}
     byId('tutorial-open').focus({preventScroll:true});
   };
   audio.addEventListener('timeupdate',updateAudio);audio.addEventListener('loadedmetadata',updateAudio);audio.addEventListener('pause',updateAudio);audio.addEventListener('play',updateAudio);
@@ -114,11 +115,11 @@ export function mountTutorial(hooks:Hooks) {
   window.addEventListener('scroll',positionHighlight,true);window.addEventListener('resize',positionHighlight);
   // Detailed manual with chapter search and an export that remains usable outside the app.
   const manual=byId('help-content');manual.replaceChildren();
-  const heading=el('h1','北辰 0.6.0-test · 详细使用教程');const introduction=el('p',`共 ${chapters.length} 章，包含详细步骤、预期结果、常见问题与离线中文讲解。`);
+  const heading=el('h1','北辰 0.7.0-test · 详细使用教程');const introduction=el('p',`共 ${chapters.length} 章，包含详细步骤、预期结果、常见问题与离线中文讲解。`);
   const tools=el('div');tools.className='manual-tools';
   const search=el('input');search.id='manual-search';search.type='search';search.placeholder='搜索：组播、经纬度、回放、故障……';search.setAttribute('aria-label','搜索详细教程');
   const start=el('button','从第一章开始语音教程');start.onclick=()=>open(0);
-  const download=el('button','下载完整文字教程');download.onclick=()=>{const url=URL.createObjectURL(new Blob(['\uFEFF',manualText],{type:'text/plain;charset=utf-8'}));const a=el('a');a.href=url;a.download='北辰-0.6.0-test-详细使用教程.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+  const download=el('button','下载完整文字教程');download.onclick=()=>{const url=URL.createObjectURL(new Blob(['\uFEFF',manualText],{type:'text/plain;charset=utf-8'}));const a=el('a');a.href=url;a.download='北辰-0.7.0-test-详细使用教程.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   tools.append(search,start,download);const results=el('div');results.id='manual-results';manual.append(heading,introduction,tools,results);
   const renderManual=()=>{
     const query=search.value.trim().toLowerCase();results.replaceChildren();let found=0;

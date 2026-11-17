@@ -58,16 +58,16 @@
   {
     "id": "rate-time",
     "file": "rate-time.mp3",
-    "duration": 24.552,
-    "textSha256": "9aa31dbddb7bb469395c8a274f1edf872fc77d27af70b626be57d0005dea62e0",
-    "audioSha256": "ff6ac3254862a883a947f8d6befeb12c6a70d5f5525c347c4bfa70fe47b2c050"
+    "duration": 30.272,
+    "textSha256": "bed576327f1e9fcf2cd60195846505edb4c7e083815260e7c1430b7275860664",
+    "audioSha256": "fd1a7e84f7cf9eed2c027e7903e20ac89cd861de1dae23a0ec0c292ebae003b1"
   },
   {
     "id": "quick-test",
     "file": "quick-test.mp3",
-    "duration": 26.64,
-    "textSha256": "a81c1a217ffae239ed7fbaa29cb1344ea6e23c7f338a598cb857d7451eca5bfd",
-    "audioSha256": "c72a1a9c44fbaa27c0b10a6502c18e04da1a660859890e5e00a8e93f25706df7"
+    "duration": 26.716,
+    "textSha256": "a1e7d93e3a84e011cdb377d6060802992ea6fdf348b03a0a3c3cd9a762c95725",
+    "audioSha256": "df4b7483ba9027cc0ef1c4ff21212494b7d3418d0a518bc46af3612cd7473ec8"
   },
   {
     "id": "scenarios",
@@ -79,9 +79,9 @@
   {
     "id": "fields",
     "file": "fields.mp3",
-    "duration": 24.312,
-    "textSha256": "0e345d800ebcc62f852c73390575f052302e3d926cf9ad518e85b187714b030a",
-    "audioSha256": "5723b92dc62c9915f8e8575134b7775daeae2460f4b492cb4a16e825d7f0cb40"
+    "duration": 30.483,
+    "textSha256": "c3943fc93bdf627e125d0f89a0d9e1e4333f84724052c80592265cb85dc0cc83",
+    "audioSha256": "2a33e000c35722463fda690a95655a9a6a91b1d8816c6ed75a223dbcf20d804b"
   },
   {
     "id": "coordinates",

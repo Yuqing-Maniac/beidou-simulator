@@ -18,36 +18,35 @@
         <button type="button" id="tab-track" class="tab" aria-pressed="false">场景地图</button>
         <button type="button" id="tab-proto" class="tab" aria-pressed="false">协议约定</button>
       <button type="button" id="opening-preview" class="tab">开场回看</button><button type="button" id="fullscreen-toggle" class="tab">退出全屏 · F11</button><button type="button" id="tutorial-open" class="tab tutorial-entry">语音教程</button><button type="button" id="help-open" class="tab">使用说明</button></nav>
-      <section class="network-panel" aria-label="网络连接配置">
-        <div class="network-common"><label>共用网卡<select id="iface"></select></label><label>发送频率（条/秒）<input id="rate" value="10" inputmode="decimal"/></label><span id="rate-hint">10 条/秒 = 每 100 毫秒发送一条</span><label><input id="use-sys-time" type="checkbox" checked/> 使用系统时间</label><span id="time-hint" role="status"></span></div>
+      <details id="connection-settings" class="network-panel" aria-label="网络连接配置"><summary>连接设置 <span id="connection-summary">默认组播，打开可连接自己的设备</span></summary>
+        <div class="network-common"><label>共用网卡<select id="iface"></select></label><label>发送频率（条/秒）<input id="rate" value="10" inputmode="decimal"/></label><span id="rate-hint">10 条/秒 = 每 100 毫秒发送一条</span><label class="legacy-time-control"><input id="use-sys-time" type="checkbox" checked/> 使用系统时间</label></div>
         <div class="network-channels">
           <fieldset><legend><label><input id="udp-on" type="checkbox" checked/> UDP 组播</label></legend><label>组播地址<input id="host" value="224.100.100.1"/></label><label>端口<input id="port" value="6020"/></label></fieldset>
           <fieldset><legend><label><input id="unicast-on" type="checkbox"/> UDP 单播</label></legend><label>对端地址<input id="unicast-host" value="127.0.0.1"/></label><label>端口<input id="unicast-port" value="6022"/></label></fieldset>
           <fieldset><legend><label><input id="tcp-on" type="checkbox"/> TCP</label></legend><label>模式<select id="tcp-mode"><option value="client">客户端</option><option value="server">服务端</option></select></label><label>对端地址<input id="tcp-host" value="127.0.0.1"/></label><label>端口<input id="tcp-port" value="6021"/></label></fieldset>
         </div><div class="network-foot"><span id="link-status">等待连接</span><span>共用网卡，不修改系统网络配置；组播端口允许复用，其他软件也需开启端口复用。</span></div><p id="net-status" hidden></p>
-      </section>
+      </details>
     </header>
 
     <section id="global-clock" class="global-clock" aria-label="全局时间控制">
-      <div class="clock-primary"><strong>全局时间</strong><select id="clock-source" aria-label="时间来源"><option value="original">保留原始报文时间</option><option value="system" selected>系统当前时间（推荐）</option><option value="manual">指定调试时间</option></select><button id="clock-now">读取当前时刻</button><span id="clock-summary" role="status"></span></div>
-      <details id="clock-settings"><summary>调试时间设置 · 对全部场景和回放发送生效</summary><div class="clock-controls"><label>指定时刻（本机时区）<input id="clock-date" type="datetime-local" step="0.001"/></label><label>时间倍率<input id="clock-rate" type="range" min="0" max="100" step="0.25" value="1"/><output id="clock-rate-text">1×</output></label><button id="clock-pause">暂停时间</button><button id="clock-back">退 1 秒</button><button id="clock-forward">进 1 秒</button><label>GPS 周<input id="clock-week" type="number" min="0" max="9999" step="1"/></label><label>周内秒<input id="clock-sow" type="number" min="0" max="604799.99" step="0.01"/></label></div><p>指定时间可暂停、步进或按倍率前进；切换场景不重置时间。回放仅解析时保留原文，向网络发送时应用此设置；“保留原始”用于原句或故障报文逐字测试。</p></details>
+      <div class="clock-primary"><strong>全局报文时间</strong><select id="clock-source" aria-label="时间来源"><option value="original">保留原始报文时间</option><option value="system" selected>系统当前时间（推荐）</option><option value="manual">指定调试时间</option></select><button id="clock-now">读取当前时刻</button><span id="clock-summary" role="status"></span><span id="time-hint" role="status"></span></div>
+      <details id="clock-settings"><summary>调试时间设置 · 对全部场景和回放发送生效</summary><div class="clock-controls"><label>指定时刻（本机时区）<input id="clock-date" type="datetime-local" step="0.001"/></label><label>时间微调（±60秒）<input id="clock-nudge" type="range" min="-60" max="60" step="0.01" value="0"/><output id="clock-nudge-text">0.00 秒</output></label><label>时间倍率<input id="clock-rate" type="range" min="0" max="100" step="0.25" value="1"/><output id="clock-rate-text">1×</output></label><button id="clock-pause">暂停时间</button><button id="clock-back">退 1 秒</button><button id="clock-forward">进 1 秒</button><label>GPS 周<input id="clock-week" type="number" min="0" max="9999" step="1"/></label><label>周内秒<input id="clock-sow" type="number" min="0" max="604799.99" step="0.01"/></label></div><p>统一 GPS 时间字段；运动速度和回放倍速分别设置。指定时间可暂停、步进或按倍率前进，切换场景不重置时间。回放仅解析时保留原文，向网络发送时应用此设置；“保留原始”用于原句或故障报文逐字测试。</p></details>
     </section>
-    <section class="workspace-bar"><div><strong>导航联调工作台</strong><p>选择场景 → 确认网卡 → 开始测试</p></div><div class="mode-switch"><button id="mode-simple" aria-pressed="true">Type 1 · 快速测试</button><button id="mode-config" aria-pressed="false">Type 2 · 完整配置</button></div></section>
-<section class="utilities"><button id="save-config">保存配置</button><button id="load-config">导入配置</button><button id="export-log">导出日志</button><button id="load-replay">打开报文文件</button><button id="replay-run" disabled>开始回放</button><button id="replay-stop" disabled>停止回放</button><div class="replay-speed-control"><label for="replay-speed">回放速度</label><input id="replay-speed" type="range" min="0" max="1000" step="1" aria-valuetext="1 倍速"/><output id="replay-speed-value" for="replay-speed">1×</output><button id="replay-normal">恢复 1×</button><div id="replay-stops" aria-label="常用回放倍速"></div></div><label title="有日志时间戳时按原始节奏；普通文本按此频率作为 1×。">无时间戳时（条/秒）<input id="replay-rate" type="number" min="0.1" step="0.1" max="1000" value="10"/></label><span id="replay-hint">1×：按日志原始时间；普通文本每秒 10 条</span><label class="replay-progress">播放进度<progress id="replay-progress" max="1" value="0"></progress><span id="replay-count">0 / 0</span></label><span id="file-status" role="status"></span><input type="file" id="file-picker" hidden/></section>
+    <section class="workspace-bar"><div><strong>选个场景，就能开始测试</strong><p>先看地图效果，再按需要连接设备。不懂北斗参数也能上手。</p></div><div class="mode-switch"><button id="mode-simple" aria-pressed="true">快速测试</button><button id="mode-config" aria-pressed="false">完整配置</button></div></section>
 <main id="board">
       <section class="toolbar">
-        <div class="dataset-heading"><span>01 / 测试数据集</span><h2>选择一个场景，立即生成导航报文</h2><p>正常工况、状态异常、协议故障均已预置；故障场景用于验证接收端容错。</p><button id="quick-start">一键开始测试 · 静止 RTK</button></div><div class="sets" id="dataset-list" role="listbox" aria-label="测试数据集"></div>
+        <div class="dataset-heading"><span>第 1 步 · 选场景</span><h2>你想测试哪一种情况？</h2><p>选中后点击“开始测试”。其他协议和故障场景在“完整配置”中。</p><button id="quick-start">一键开始测试 · 静止 RTK</button></div><div class="sets" id="dataset-list" role="listbox" aria-label="测试数据集"></div>
         <p id="dataset-purpose" class="purpose"></p>
 
-        <div class="send">
+        <div class="send"><span class="step-label">第 2 步 · 开始</span><button id="preview-run" type="button">仅看演示（不发送）</button>
           <button type="button" id="send-once">发送一次</button>
-          <button type="button" id="send-run" aria-pressed="false">连续发送</button>
+          <button type="button" id="send-run" aria-pressed="false">开始测试</button>
         </div>
       </section>
 
-    <section id="track">
-      <div class="map-title"><h2>场景地图 · 数据与运动同步</h2><label>经纬度显示与输入 <select id="coord-format"><option value="dd">小数度 · 8 位</option><option value="dms">度分秒</option><option value="dm">度分千分</option></select></label><label>地图数据<select id="map-source"><option value="current">当前测试场景</option><option value="receive">最新接收／文件回放</option></select></label><span id="map-summary"></span></div><section class="track-bar">
-        <label><input id="advance-position" type="checkbox" checked/>标准场景按速度更新位置</label><label>地图放大<select id="map-zoom"><option value="1">1×</option><option value="5">5×</option><option value="20">20×</option><option value="100">100×（观察慢速）</option></select></label><label>运动<select id="track-kind"><option value="line">直线巡航</option><option value="circle">圆周</option><option value="eight">8 字</option><option value="path">手绘路径</option></select></label>
+    <section class="test-results" aria-label="测试结果"><div><span>测试状态</span><strong id="test-state">尚未开始</strong></div><div><span>已发出</span><strong id="test-sent">0 条</strong></div><div><span>行驶距离</span><strong id="test-distance">0.00 米</strong></div><div><span>当前速度</span><strong id="test-speed">0.00 米/秒</strong></div><p id="test-guidance" role="status">先选择场景，再开始测试；也可只看演示。</p></section><section id="track">
+      <div class="map-title"><h2>第 3 步 · 看地图和行驶轨迹</h2><label>地图放大<select id="map-zoom"><option value="1">1×</option><option value="5">5×</option><option value="20">20×</option><option value="100">100×（观察慢速）</option></select></label><button id="trace-clear" type="button">清除轨迹</button><span id="map-summary"></span></div><details id="motion-settings"><summary>调整位置、姿态与运动参数</summary><div class="map-options"><label>经纬度显示与输入 <select id="coord-format"><option value="dd">小数度 · 8 位</option><option value="dms">度分秒</option><option value="dm">度分千分</option></select></label><label>地图数据<select id="map-source"><option value="current">当前测试场景</option><option value="receive">最新接收／文件回放</option></select></label></div><section class="track-bar">
+        <label><input id="advance-position" type="checkbox" checked/>标准场景按速度更新位置</label><label>运动<select id="track-kind"><option value="line">直线巡航</option><option value="circle">圆周</option><option value="eight">8 字</option><option value="path">手绘路径</option></select></label>
         <label>起点纬<input id="track-lat" value="31.15960455" /></label>
         <label>起点经<input id="track-lon" value="121.17847990" /></label>
         <label>航向<input id="track-heading" value="90" /></label>
@@ -56,11 +55,13 @@
         <label><input id="track-loop" type="checkbox" checked /> 循环</label>
         <button type="button" id="track-run" aria-pressed="false">开始运动</button>
         <button type="button" id="track-clear">清除路径</button><button id="save-path">保存路径</button><button id="load-path">导入路径</button>
-        <span id="track-readout"></span>
+
       </section>
       <p class="track-note">离线仿真场地底图，金色为已行轨迹，绿色为预览轨迹。车辆从静止加速，转弯联动横滚与侧向加速度。手绘模式下点击地图加点。航向沿切线。Gyro Z 只写入航向变化率，单位仍是未规定。输入可切换小数度、度分秒、度分千分；线上报文始终为十进制度、小数 8 位。</p>
-      <canvas id="track-map" width="1240" height="620"></canvas><p class="map-attribution">离线试验场示意底图 · 道路、建筑、水域均为仿真场地，不代表真实地理。<span id="map-status"></span></p>
+      </details>
+      <canvas id="track-map" width="1240" height="620"></canvas><p id="track-readout"></p><p class="map-attribution">离线试验场示意底图 · 道路、建筑、水域均为仿真场地，不代表真实地理。<span id="map-status"></span></p>
     </section>
+<details id="inspection-settings"><summary>查看协议字段与收发记录</summary>
       <section class="wire" aria-label="线上报文">
         <pre id="sentence" class="sentence"></pre>
         <p id="checksum-line" class="check-line"></p>
@@ -84,6 +85,9 @@
           <div id="parse" class="parse"></div>
         </div>
       </section>
+</details>
+<details id="file-settings"><summary>更多工具 · 保存配置、导出日志、文件回放</summary><section class="utilities"><button id="save-config">保存配置</button><button id="load-config">导入配置</button><button id="export-log">导出日志</button><button id="load-replay">打开报文文件</button><button id="replay-run" disabled>开始回放</button><button id="replay-stop" disabled>停止回放</button><div class="replay-speed-control"><label for="replay-speed">回放速度</label><input id="replay-speed" type="range" min="0" max="1000" step="1" aria-valuetext="1 倍速"/><output id="replay-speed-value" for="replay-speed">1×</output><button id="replay-normal">恢复 1×</button><div id="replay-stops" aria-label="常用回放倍速"></div></div><label title="有日志时间戳时按原始节奏；普通文本按此频率作为 1×。">无时间戳时（条/秒）<input id="replay-rate" type="number" min="0.1" step="0.1" max="1000" value="10"/></label><span id="replay-hint">1×：按日志原始时间；普通文本每秒 10 条</span><label class="replay-progress">播放进度<progress id="replay-progress" max="1" value="0"></progress><span id="replay-count">0 / 0</span></label><span id="file-status" role="status"></span><input type="file" id="file-picker" hidden/></section>
+</details>
     </main>
 
     <main id="proto" hidden></main>

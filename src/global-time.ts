@@ -5,7 +5,7 @@ export class DebugClock {
   utc(systemUtc:number,mono:number):number|null {return this.source==='original'?null:this.source==='system'?systemUtc:this.baseUtc+Math.max(0,mono-this.baseMono)*this.rate;}
   system(){this.source='system';}
   original(){this.source='original';}
-  manual(utc:number,mono:number,rate=this.rate){if(!Number.isFinite(utc)||!Number.isFinite(rate)||rate<0||rate>100)throw new Error('调试时间或时间倍率无效');this.baseUtc=utc;this.baseMono=mono;this.rate=rate;this.source='manual';}
+  manual(utc:number,mono:number,rate=this.rate){if(!Number.isFinite(utc)||!Number.isFinite(new Date(utc).getTime())||!Number.isFinite(rate)||rate<0||rate>100)throw new Error('调试时间或时间倍率无效');this.baseUtc=utc;this.baseMono=mono;this.rate=rate;this.source='manual';}
   changeRate(rate:number,systemUtc:number,mono:number){this.manual(this.utc(systemUtc,mono)??systemUtc,mono,rate);}
   stamp(systemUtc:number,mono:number){const utc=this.utc(systemUtc,mono);return utc===null?null:gpsWeekTimeFromUtc(utc);}
 }

@@ -66,3 +66,9 @@ test('outgoing replay uses global time, retains deliberate checksum error and re
  const bad=encodeSentence(DATASETS[0].tokens,'00');assert.equal(decodeSentence(applyOutgoingTime(bad,stamp)).sumOk,false);
  assert.throws(()=>applyOutgoingTime('$GPCHC,1*00\r\n',stamp));assert.equal(applyOutgoingTime('$GPCHC,1*00\r\n',null),'$GPCHC,1*00\r\n');
 });
+
+import {parameterSpec} from '../src/parameter-controls.ts';
+test('parameter sliders preserve precise input and use local coordinate adjustment windows',()=>{
+ const lat=parameterSpec('lat',31.15960455)!;assert.ok(Math.abs(lat.min-31.15860455)<1e-10);assert.equal(lat.step,.00000001);assert.equal(lat.digits,8);
+ assert.equal(parameterSpec('lat',95),null);assert.equal(parameterSpec('heading',400)!.max,359.99);assert.ok(parameterSpec('alt',50000)!.max>=50000);assert.equal(parameterSpec('status',61),null);
+});
