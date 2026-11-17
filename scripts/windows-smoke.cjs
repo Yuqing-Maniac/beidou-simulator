@@ -15,6 +15,18 @@ async function main() {
   try {
     const initial=await evaluate(`(async()=>({fullscreen:await window.beidou.fullscreen(), ready:document.querySelectorAll('#dataset-list .set').length===13&&typeof document.getElementById('replay-normal')?.onclick==='function'&&typeof document.getElementById('fullscreen-toggle')?.onclick==='function', splashClosed:!document.getElementById('splash')}))()`);
     if(!initial.fullscreen||!initial.ready||!initial.splashClosed)throw new Error('Startup validation failed: '+JSON.stringify(initial));
+    const controls=await evaluate(`(()=>({simple:document.body.classList.contains('simple'),source:document.getElementById('clock-source').value,scenes:[...document.querySelectorAll('#dataset-list .set')].filter(e=>e.getClientRects().length).length,sliders:document.querySelectorAll('.parameter-slider').length,preview:typeof document.getElementById('preview-run').onclick==='function'}))()`);
+    if(!controls.simple||controls.source!=='system'||controls.scenes!==6||controls.sliders<15||!controls.preview)throw new Error('Quick controls validation failed: '+JSON.stringify(controls));
+    const clock=await evaluate(`(()=>{
+      const input=document.getElementById('clock-week');input.value='2500';input.dispatchEvent(new Event('change',{bubbles:true}));
+      const seconds=document.getElementById('clock-sow');seconds.value='123.00';seconds.dispatchEvent(new Event('change',{bubbles:true}));
+      document.querySelector('[data-scenario="reverse"]').click();
+      const parts=document.getElementById('sentence').textContent.split(',');
+      const result={source:document.getElementById('clock-source').value,week:parts[1],seconds:parts[2]};
+      document.getElementById('clock-now').click();document.querySelector('[data-scenario="motion-line"]').click();return result;
+    })()`);
+    if(clock.source!=='manual'||clock.week!=='2500'||clock.seconds!=='123.00')throw new Error('Global clock did not survive scene change: '+JSON.stringify(clock));
+    console.log('Packaged quick controls and global clock passed:',JSON.stringify({controls,clock}));
     const toggles=await evaluate(`(async()=>{await window.beidou.fullscreen(true);await new Promise(r=>setTimeout(r,700));const windowed=!await window.beidou.fullscreen();await window.beidou.fullscreen(true);await new Promise(r=>setTimeout(r,700));return {windowed,restored:await window.beidou.fullscreen()};})()`);
     if(!toggles.windowed||!toggles.restored)throw new Error('Fullscreen toggle failed: '+JSON.stringify(toggles));
     const tutorial=await evaluate(`(async()=>{

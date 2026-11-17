@@ -5,7 +5,7 @@ on:
       tag:
         description: Existing release tag to build
         required: true
-        default: v0.6.0-test
+        default: v0.7.0-test
 permissions:
   contents: write
 jobs:
@@ -55,7 +55,7 @@ jobs:
           $checksums | Set-Content release/SHA256SUMS.txt -Encoding ascii
           gh release upload $env:RELEASE_TAG $packages[0].FullName $packages[1].FullName release/SHA256SUMS.txt --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
-          gh release upload $env:RELEASE_TAG docs/media/opening.mp4 docs/media/opening.png public/startup.wav --clobber
+          gh release upload $env:RELEASE_TAG docs/media/opening.mp4 docs/media/opening.png docs/media/simple-ui.png docs/media/global-clock.png public/startup.wav --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Preview upload failed' }
           $manual = Join-Path "$PWD/release" 'tutorial.txt'
           [System.IO.File]::WriteAllText($manual, (Get-Content docs/tutorial.txt -Raw -Encoding utf8), [System.Text.UTF8Encoding]::new($true))
