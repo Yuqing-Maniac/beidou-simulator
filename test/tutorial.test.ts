@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import type {TutorialChapter} from '../src/tutorial-types.ts';
 const chapters=JSON.parse(readFileSync(new URL('../src/tutorial-data.json',import.meta.url),'utf8')) as TutorialChapter[];
 test('detailed tutorial has complete chapters, expected results and matching offline narration',()=>{
- assert.equal(chapters.length,24);assert.equal(new Set(chapters.map(c=>c.id)).size,24);
+ assert.equal(chapters.length,28);assert.equal(new Set(chapters.map(c=>c.id)).size,28);
  const manifest=JSON.parse(readFileSync(new URL('../public/tutorial/audio/manifest.json',import.meta.url),'utf8'));
  assert.equal(manifest.length,chapters.length);
  for(const chapter of chapters){

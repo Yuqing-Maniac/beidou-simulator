@@ -21,7 +21,7 @@ export function mountTutorial(hooks:Hooks) {
   const save=()=>{try{localStorage.setItem('beichen-tutorial',JSON.stringify({...prefs,completed:[...completed],last:chapters[index].id}));}catch{/* Text and audio remain available without storage. */}};
   const panel=el('section');panel.id='tutorial-panel';panel.hidden=true;panel.setAttribute('role','dialog');panel.setAttribute('aria-label','北辰逐步语音教程');
   panel.innerHTML=`<header class="tutorial-header"><div><small>北辰 · 离线语音教程</small><h2 id="tutorial-title"></h2></div><button id="tutorial-collapse" aria-label="收起教程面板">收起</button><button id="tutorial-close" aria-label="关闭教程">×</button></header>
-  <div class="tutorial-progress"><progress id="tutorial-progress" max="24" value="1"></progress><span id="tutorial-count"></span></div>
+  <div class="tutorial-progress"><progress id="tutorial-progress" max="28" value="1"></progress><span id="tutorial-count"></span></div>
   <div class="tutorial-audio-controls"><button id="tutorial-play">播放讲解</button><button id="tutorial-restart">重播</button><label><input id="tutorial-voice" type="checkbox"/>语音</label><label><input id="tutorial-cues" type="checkbox"/>提示音</label><label>音量<input id="tutorial-volume" aria-label="教程音量" type="range" min="0" max="100"/></label><label>语速<select id="tutorial-speed"><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></label></div>
   <p id="tutorial-audio-status" role="status" aria-live="polite"></p><div class="tutorial-playback"><progress id="tutorial-audio-progress" max="1" value="0"></progress><span id="tutorial-audio-time">0:00 / —</span></div>
   <div id="tutorial-body"><label class="tutorial-chapter-label">跳转章节<select id="tutorial-chapter"></select></label><p id="tutorial-overview"></p><details class="tutorial-transcript" open><summary>本章语音讲解原文</summary><p id="tutorial-transcript"></p></details><h3>按步骤操作与检查</h3><ol id="tutorial-steps"></ol><h3>常见问题与说明</h3><ul id="tutorial-tips"></ul><p class="tutorial-note">教程只定位控件，不会代你改参数或发报。当前任务状态保留。</p><button id="tutorial-side">面板移到左侧</button><button id="tutorial-manual">查看详细文字教程</button></div>
@@ -115,11 +115,11 @@ export function mountTutorial(hooks:Hooks) {
   window.addEventListener('scroll',positionHighlight,true);window.addEventListener('resize',positionHighlight);
   // Detailed manual with chapter search and an export that remains usable outside the app.
   const manual=byId('help-content');manual.replaceChildren();
-  const heading=el('h1','北辰 0.7.0-test · 详细使用教程');const introduction=el('p',`共 ${chapters.length} 章，包含详细步骤、预期结果、常见问题与离线中文讲解。`);
+  const heading=el('h1','北辰 0.8.0-test · 详细使用教程');const introduction=el('p',`共 ${chapters.length} 章，包含详细步骤、预期结果、常见问题与离线中文讲解。`);
   const tools=el('div');tools.className='manual-tools';
   const search=el('input');search.id='manual-search';search.type='search';search.placeholder='搜索：组播、经纬度、回放、故障……';search.setAttribute('aria-label','搜索详细教程');
   const start=el('button','从第一章开始语音教程');start.onclick=()=>open(0);
-  const download=el('button','下载完整文字教程');download.onclick=()=>{const url=URL.createObjectURL(new Blob(['\uFEFF',manualText],{type:'text/plain;charset=utf-8'}));const a=el('a');a.href=url;a.download='北辰-0.7.0-test-详细使用教程.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+  const download=el('button','下载完整文字教程');download.onclick=()=>{const url=URL.createObjectURL(new Blob(['\uFEFF',manualText],{type:'text/plain;charset=utf-8'}));const a=el('a');a.href=url;a.download='北辰-0.8.0-test-详细使用教程.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   tools.append(search,start,download);const results=el('div');results.id='manual-results';manual.append(heading,introduction,tools,results);
   const renderManual=()=>{
     const query=search.value.trim().toLowerCase();results.replaceChildren();let found=0;
@@ -136,7 +136,7 @@ export function mountTutorial(hooks:Hooks) {
   search.oninput=renderManual;renderManual();
   let showInvite=true;try{showInvite=localStorage.getItem('beichen-tutorial-intro')!=='seen';}catch{}
   if(showInvite){
-    const invite=el('aside');invite.id='tutorial-invite';invite.append(el('strong','第一次使用？24 章中文语音教程已内置'),el('span','可离线听讲、查看详细步骤，并定位真实操作控件。'));
+    const invite=el('aside');invite.id='tutorial-invite';invite.append(el('strong','第一次使用？28 章中文语音教程已内置'),el('span','可离线听讲、查看详细步骤，并定位真实操作控件。'));
     const begin=el('button','开始学习');begin.onclick=()=>open(0);
     const later=el('button','稍后再看');later.onclick=()=>{invite.remove();try{localStorage.setItem('beichen-tutorial-intro','seen');}catch{}};
     invite.append(begin,later);document.querySelector('.workspace-bar')?.after(invite);

@@ -1,9 +1,11 @@
-export type SavedWorkspace = { version: 1; datasetId: string; tokens: Record<string,string>; controls: Record<string,string|boolean>; path: {lat:number;lon:number}[]; checksumOverride?: string; globalTime?:{source:'original'|'system'|'manual';utc:number|null;rate:number} };
+import {validateFaultSettings,type FaultSettings} from "./fault-injection.ts";
+export type SavedWorkspace = { version: 1; datasetId: string; tokens: Record<string,string>; controls: Record<string,string|boolean>; path: {lat:number;lon:number}[]; checksumOverride?: string; faultInjection?:FaultSettings; globalTime?:{source:'original'|'system'|'manual';utc:number|null;rate:number} };
 export function parseWorkspace(text: string): SavedWorkspace {
   const v = JSON.parse(text);
   if(v.version !== 1 || !v.tokens || !v.controls || !Array.isArray(v.path) || typeof v.datasetId !== 'string') throw new Error('配置文件格式不正确');
   if(!Object.values(v.tokens).every(x=>typeof x==='string') || !Object.values(v.controls).every(x=>typeof x==='string'||typeof x==='boolean')) throw new Error('配置字段格式不正确');
   if(v.globalTime){const c=v.globalTime;if(!['original','system','manual'].includes(c.source)||!Number.isFinite(c.rate)||c.rate<0||c.rate>100||c.source==='manual'&&(!Number.isFinite(c.utc)||!Number.isFinite(new Date(c.utc).getTime())))throw new Error('全局时间配置无效');}
+  if(v.faultInjection!==undefined)validateFaultSettings(v.faultInjection);
   validatePath(v.path);
   if(v.checksumOverride !== undefined && !/^[0-9a-f]{2}$/i.test(v.checksumOverride)) throw new Error('校验覆盖值无效');
   return v;
