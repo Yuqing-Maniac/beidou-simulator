@@ -45,7 +45,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'dist/.vite/manifest
 if (!Object.keys(manifest).some(key => key.endsWith('index.html'))) throw new Error('Vite application entry is missing');
 const expectedFiles = [...walk(path.join(root, 'dist')).map(name => `dist/${name}`), ...walk(path.join(root, 'electron')).map(name => `electron/${name}`)];
 if (expectedFiles.some(name => name.endsWith('.map'))) throw new Error('Source maps must not be packaged');
-const unpacked = path.join(release, windows ? 'win-unpacked' : 'linux-unpacked');
+const unpacked = path.join(release, windows ? 'win-unpacked' : 'linux-arm64-unpacked');
 const appAsar = path.join(unpacked, 'resources/app.asar');
 if (!fs.existsSync(appAsar)) throw new Error(`Missing packaged application: ${appAsar}`);
 const packaged = new Set(asar.listPackage(appAsar).map(name => name.replace(/^[/\\]+/, '').replaceAll('\\', '/')));

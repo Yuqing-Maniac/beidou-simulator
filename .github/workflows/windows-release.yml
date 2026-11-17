@@ -133,7 +133,7 @@ jobs:
         run: |
           xvfb-run -a bash -c '
             set -e
-            release/linux-unpacked/beidou-simulator --disable-gpu --remote-debugging-port=9222 >linux-smoke.log 2>&1 &
+            release/linux-arm64-unpacked/beidou-simulator --disable-gpu --remote-debugging-port=9222 >linux-smoke.log 2>&1 &
             pid=$!
             trap "kill $pid 2>/dev/null || true" EXIT
             sleep 7
@@ -155,8 +155,8 @@ jobs:
           base_asar=$(find previous -path '*/resources/app.asar' -type f)
           test "$(printf '%s\n' "$base_asar" | wc -l)" -eq 1
           delta="release/BeidouSimulator_${BASE_TAG}_to_${RELEASE_TAG}_Kylin-ARM64.bcu"
-          node scripts/build-update.cjs --base "$base_asar" --target release/linux-unpacked/resources/app.asar --platform linux --arch arm64 --electron-major 22 --out "$delta"
-          node scripts/verify-update.cjs "$base_asar" release/linux-unpacked/resources/app.asar "$delta"
+          node scripts/build-update.cjs --base "$base_asar" --target release/linux-arm64-unpacked/resources/app.asar --platform linux --arch arm64 --electron-major 22 --out "$delta"
+          node scripts/verify-update.cjs "$base_asar" release/linux-arm64-unpacked/resources/app.asar "$delta"
       - name: Assemble and verify portable tarball
         run: |
           node scripts/assemble-release.cjs linux-arm64
