@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const { createSession, listNics } = require("./multicast.cjs");
+const { ensureDesktopShortcut } = require("./desktop-shortcuts.cjs");
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 const session = createSession();
@@ -37,7 +38,10 @@ ipcMain.handle("beidou:nics", () => listNics());
 ipcMain.handle("beidou:listen", (_event, cfg) => session.listen(cfg || {}));
 ipcMain.handle("beidou:send", (_event, cfg) => session.send(cfg.sentence, cfg));
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  ensureDesktopShortcut({ app, shell, execPath: process.execPath, portableExecutable: process.env.PORTABLE_EXECUTABLE_FILE, platform: process.platform });
+  createWindow();
+});
 app.on("window-all-closed", () => {
   session.close();
   app.quit();
