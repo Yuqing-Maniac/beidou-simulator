@@ -1,3 +1,4 @@
+import { parameterSpec } from "./parameter-controls.ts";
 import { DebugClock, applyOutgoingTime } from "./global-time.ts";
 import { datasetPosition } from "./dataset-motion.ts";
 import { mountTutorial } from "./tutorial.ts";
@@ -44,8 +45,8 @@ const globalClock=new DebugClock();globalClock.system();
 let streamTimer=0;
 const archive: (StreamRow & { timestamp: string })[] = [];
 const state = {
-  datasetId: DATASETS[0].id,
-  tokens: { ...DATASETS[0].tokens } as Tokens,
+  datasetId: 'motion-line',
+  tokens: { ...DATASETS.find(d=>d.id==='motion-line')!.tokens } as Tokens,
   checksumOverride: undefined as string | undefined,
   running: false,
   positionSeed: null as Tokens|null,
@@ -53,6 +54,10 @@ const state = {
   lastPosition: null as {lat:string;lon:string}|null,
   positionFrame: 0,
   distance: 0,
+  sent: 0,
+  failed: 0,
+  lastError: "",
+  previewOnly: false,
   timer: 0,
   savedTime: null as { week: string; sow: string } | null,
   trackOn: false,
@@ -77,7 +82,7 @@ function dataset(): Dataset {
 
 function applyDataset(id: string) {
   const d = DATASETS.find((x) => x.id === id) ?? DATASETS[0];
-  setRunning(false);setTrack(false);state.positionSeed=null;state.lastPosition=null;state.distance=0; frozenTrackTime=0; state.mapTrail=[]; state.previewMotion=Boolean(d.motion);
+  setRunning(false);setTrack(false);state.positionSeed=null;state.lastPosition=null;state.distance=0;state.sent=0;state.failed=0;state.lastError="";state.previewOnly=false; frozenTrackTime=0; state.mapTrail=[]; state.previewMotion=Boolean(d.motion);
   state.datasetId = d.id;
   state.tokens = { ...d.tokens };
   stampGlobalTime();
@@ -106,8 +111,12 @@ function renderDataset() {
   for (const d of DATASETS) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "set" + (d.id === state.datasetId ? " is-on" : "") + (d.fault ? " is-fault" : "");
-    b.innerHTML = `<span class="scenario-tag">${d.fault ? "协议故障" : d.id === "official" ? "协议基准" : "工况模拟"}</span><strong>${escapeHtml(d.name)}</strong><small>${escapeHtml(d.purpose)}</small>`;
+    const friendly:Record<string,string>={"motion-line":"直线行驶","motion-circle":"绕圈行驶","motion-eight":"8 字行驶",slow:"慢速行驶",reverse:"倒车","static-rtk":"原地停车"};
+    b.dataset.scenario=d.id;
+    b.className = "set"+(!friendly[d.id]?" advanced-scenario":"") + (d.id === state.datasetId ? " is-on" : "") + (d.fault ? " is-fault" : "");
+    b.innerHTML = `<span class="scenario-tag">${d.fault ? "协议故障" : d.id === "official" ? "协议基准" : "工况模拟"}</span><strong><span class="scene-friendly">${escapeHtml(friendly[d.id]??d.name)}</span><span class="scene-protocol">${escapeHtml(d.name)}</span></strong><small>${escapeHtml(d.purpose)}</small>`;
+    b.title=d.name+"："+d.purpose;
+
     b.setAttribute("role", "option");
     b.setAttribute("aria-selected", d.id === state.datasetId ? "true" : "false");
     b.addEventListener("click", () => {($("map-source") as HTMLSelectElement).value="current";applyDataset(d.id);});
@@ -190,6 +199,11 @@ function fieldRow(key: string) {
   input.value = key === "header" ? "$GPCHC" : key==="lat"||key==="lon" ? coordinateInput(state.tokens[key],key) : state.tokens[key] ?? "";
   if(key==="lat"||key==="lon") input.dataset.coordFormat=coordFormat();
   input.readOnly = key === "header";
+  const sliderSpec=parameterSpec(key,Number(state.tokens[key]));
+  if(sliderSpec){const slider=document.createElement('input');slider.type='range';slider.className='parameter-slider';slider.dataset.key=key;slider.min=String(sliderSpec.min);slider.max=String(sliderSpec.max);slider.step=String(sliderSpec.step);slider.value=state.tokens[key];slider.title=sliderSpec.hint;slider.setAttribute('aria-label',spec.short+' 拖动调整');
+    const hint=document.createElement('span');hint.className='slider-hint';hint.textContent=sliderSpec.hint;wrap.append(slider,hint);
+    slider.addEventListener('input',()=>{const value=Number(slider.value).toFixed(sliderSpec.digits);input.value=key==='lat'||key==='lon'?coordinateInput(value,key):value;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));});
+  }
   input.addEventListener("input", () => {
     if (key === "header") return;
     if(key==='lat'||key==='lon') {
@@ -203,7 +217,7 @@ function fieldRow(key: string) {
     } else state.tokens[key] = input.value.trim();
     if(key==='week'||key==='sow'){
       const week=Number(state.tokens.week),sow=Number(state.tokens.sow);
-      if(Number.isInteger(week)&&week>=0&&Number.isFinite(sow)&&sow>=0&&sow<604800){globalClock.manual(GPS_EPOCH_MS+(week*604800+sow-TOOL_LEAP_SECONDS)*1000,performance.now(),0);syncClockUi();}
+      if(Number.isInteger(week)&&week>=0&&week<=9999&&Number.isFinite(sow)&&sow>=0&&sow<604800){globalClock.manual(GPS_EPOCH_MS+(week*604800+sow-TOOL_LEAP_SECONDS)*1000,performance.now(),0);syncClockUi();}
     }
     state.checksumOverride = undefined;refreshDerived();renderWire();drawMap();
   });
@@ -240,6 +254,10 @@ function refreshDerived() {
     }
     const token = f.key === "header" ? "$GPCHC" : state.tokens[f.key] ?? "";
     const issues = fieldIssues(f.key, token);
+    const slider=row.querySelector<HTMLInputElement>('.parameter-slider');
+    if(slider&&document.activeElement!==slider){const value=Number(token),spec=parameterSpec(f.key,value);slider.disabled=!spec||state.trackOn&&['heading','pitch','roll','lat','lon','ve','vn','v2d','gz','ax','ay','az'].includes(f.key);
+      if(spec){if(value<Number(slider.min)||value>Number(slider.max)){slider.min=String(spec.min);slider.max=String(spec.max);}slider.value=String(value);}
+    }
     input.classList.toggle("bad", issues.some((i) => i.level === "bad"));
     const shown = f.key === "header" ? "$GPCHC" : token;
     const tokenEl = row.querySelector(".token") as HTMLElement;
@@ -404,7 +422,7 @@ function netConfig() {
 }
 
 function showLinkStatus(status: { udp?: string; tcp?: string }) {
-  $("link-status").textContent = `${status.udp ?? ""} · ${status.tcp ?? ""}`;
+  $("link-status").textContent = `${status.udp ?? ""} · ${status.tcp ?? ""}`;$("connection-summary").textContent=$("link-status").textContent;
 }
 
 function showNetError(text: string) {
@@ -415,7 +433,7 @@ function showNetError(text: string) {
     return;
   }
   el.hidden = false;
-  el.textContent = text;
+  el.textContent = text;($('connection-settings') as HTMLDetailsElement).open=true;
 }
 
 function acceptLive(packet: LivePacket) {
@@ -489,7 +507,7 @@ function stampLive() {
     const text = { ...formatTrackTokens(motion), pitch: motion.pitch.toFixed(2), roll: motion.roll.toFixed(2), ax: motion.ax.toFixed(4), ay: motion.ay.toFixed(4), az: motion.az.toFixed(4) };
     Object.assign(state.tokens, text);
   }
-  if(state.running&&!state.trackOn&&!dataset().motion&&!dataset().fault&&($('advance-position') as HTMLInputElement).checked){
+  if((state.running||state.previewOnly)&&!state.trackOn&&!dataset().motion&&!dataset().fault&&($('advance-position') as HTMLInputElement).checked){
     const seed=state.positionSeed;
     if(!seed||['ve','vn'].some(k=>seed[k]!==state.tokens[k])||state.lastPosition&&(state.tokens.lat!==state.lastPosition.lat||state.tokens.lon!==state.lastPosition.lon)){
       state.positionSeed={...state.tokens};state.positionStartedAt=performance.now();
@@ -497,7 +515,7 @@ function stampLive() {
     const position=datasetPosition(state.positionSeed!, (performance.now()-state.positionStartedAt)/1000);
     if(position){Object.assign(state.tokens,position);state.lastPosition=position;}
   }
-  if (useTime || state.trackOn || state.running) {
+  if (useTime || state.trackOn || state.running || state.previewOnly) {
     refreshDerived();
     renderWire();
   }
@@ -515,18 +533,22 @@ async function sendOnce() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ ...cfg, sentence }),
         })).json()) as { ok?: boolean; bytes?: number; error?: string; channels?: string[]; tcpError?: string });
-    if (data.ok === false) pushRow("发送", sentence, `未发出：${data.error ?? ""}`);
+    if (data.ok === false) {state.failed++;state.lastError=data.error??"未能发出";pushRow("发送", sentence, `未发出：${data.error ?? ""}`);}
     else {
+      if(data.channels?.length){state.sent++;state.lastError=data.tcpError??"";}else {state.failed++;state.lastError=data.tcpError??"没有可用的发送连接";}
       const channels = (data.channels ?? []).join("+") || "无";
       const extra = data.tcpError ? ` · ${data.tcpError}` : "";
       pushRow("发送", sentence, `${channels} ${cfg.host}:${cfg.port} · ${data.bytes ?? sentence.length} 字节 · ${cfg.iface || "默认网卡"}${extra}`);
     }
   } catch (err) {
+    state.failed++;state.lastError=err instanceof Error?err.message:String(err);
     pushRow("发送", sentence, `未发出：${err instanceof Error ? err.message : String(err)}`);
   }
+  updateTestSummary();
 }
 
 function recordTrail() {
+  if(!state.tokens.lat?.trim()||!state.tokens.lon?.trim())return;
   const p={lat:Number(state.tokens.lat),lon:Number(state.tokens.lon)};
   if(!Number.isFinite(p.lat)||!Number.isFinite(p.lon)||Math.abs(p.lat)>90||Math.abs(p.lon)>180)return;
   const last=state.mapTrail[state.mapTrail.length-1];
@@ -534,23 +556,30 @@ function recordTrail() {
   if(!last||distance>=.001){state.distance+=distance;state.mapTrail.push(p);if(state.mapTrail.length>2000)state.mapTrail.shift();}
 }
 function setRunning(on: boolean) {
-  if(!on&&state.running){stampLive();recordTrail();}
+  if(!on&&(state.running||state.previewOnly)){stampLive();recordTrail();}
+  state.previewOnly=false;
+  if(!on&&state.trackOn)setTrack(false);
   if(dataset().motion&&state.trackOn!==on)setTrack(on);
   state.running=on;window.clearInterval(state.timer);cancelAnimationFrame(state.positionFrame);
   if(!on){state.positionSeed=null;state.lastPosition=null;drawMap();}
   const run=$('send-run');run.classList.toggle('is-on',on);run.setAttribute('aria-pressed',String(on));
   const hz=Number(($('rate') as HTMLInputElement).value);const rate=Number.isFinite(hz)&&hz>0?hz:10;
-  run.textContent=on?'暂停':'连续发送';
+  run.textContent=on?'停止测试':'开始测试';
   run.title=on?`每秒发送 ${rate} 条，地图按相同速度推进位置`:'开始连续发送当前场景';
   if(on){
-    ($('map-source') as HTMLSelectElement).value='current';recordTrail();
+    state.previewOnly=false;($('map-source') as HTMLSelectElement).value='current';recordTrail();
     void sendOnce();state.timer=window.setInterval(()=>void sendOnce(),1000/rate);
-    let lastFrame=0;const update=(now:number)=>{
-      if(!state.running)return;
-      if(!state.trackOn&&now-lastFrame>=80){stampLive();recordTrail();drawMap();lastFrame=now;}
-      state.positionFrame=requestAnimationFrame(update);
-    };state.positionFrame=requestAnimationFrame(update);
+    startPositionFrames();
   }
+  updateTestSummary();
+}
+
+function startPositionFrames(){
+  cancelAnimationFrame(state.positionFrame);let lastFrame=0;
+  const update=(now:number)=>{if(!state.running&&!state.previewOnly)return;
+    if(!state.trackOn&&now-lastFrame>=80){stampLive();recordTrail();drawMap();lastFrame=now;}
+    state.positionFrame=requestAnimationFrame(update);
+  };state.positionFrame=requestAnimationFrame(update);
 }
 
 function renderProtocol() {
@@ -716,6 +745,7 @@ function drawMap() {
     }
   }
   if(valid && state.mapTrail.length) {ctx.beginPath();ctx.strokeStyle='#dd9e31';ctx.lineWidth=3;state.mapTrail.forEach((p,i)=>{const q=at(p);if(i)ctx.lineTo(q.x,q.y);else ctx.moveTo(q.x,q.y);});ctx.stroke();}
+  if(state.mapTrail.length){const start=at(state.mapTrail[0]);ctx.beginPath();ctx.fillStyle='#39749a';ctx.arc(start.x,start.y,4,0,Math.PI*2);ctx.fill();ctx.font='12px sans-serif';ctx.fillText('起点',start.x+9,start.y+15);}
   const here = at(now);
   const x = here.x;
   const y = here.y;
@@ -733,6 +763,7 @@ function drawMap() {
   ctx.restore();
   const text = formatTrackTokens(now);
   $("track-readout").textContent = `纬 ${coordinate(lat,'lat',coordFormat())}  经 ${coordinate(lon,'lon',coordFormat())}  航向 ${text.heading}°  速度 ${text.v2d} m/s`;
+  updateTestSummary();
   $('map-summary').textContent=`${dataset().name} · ${decodeStatus(mapTokens.status??"").tens} · 告警 ${mapTokens.warning??"—"}`;
 }
 
@@ -783,7 +814,7 @@ $("track-clear").addEventListener("click", () => {
 });
 for (const id of ["track-accel", "track-kind", "track-lat", "track-lon", "track-heading", "track-speed", "track-radius", "track-loop"]) {
   $(id).addEventListener("change", () => {
-    frozenTrackTime = 0;state.previewMotion=true;state.mapTrail=[];
+    frozenTrackTime = 0;state.previewMotion=true;state.mapTrail=[];state.distance=0;
     if (state.trackOn) state.trackT0 = performance.now();
     drawMap();
   });
@@ -818,7 +849,7 @@ renderDataset();
 renderFields();
 renderWire();
 renderProtocol();
-pushRow("预览", currentSentence(), "协议示例原句");
+state.previewMotion=true;pushRow("预览", currentSentence(), "当前场景预览");
 
 if (window.beidou) {
   window.beidou.onPacket(acceptLive);
@@ -934,9 +965,9 @@ $('replay-normal').onclick=()=>setReplaySpeed(1);
 $('replay-rate').addEventListener('input',()=>setReplaySpeed(replaySpeed));
 for(const speed of [10,20,25,40,50,100,200,500]){const b=document.createElement('button');b.type='button';b.textContent=`${speed}×`;b.onclick=()=>setReplaySpeed(speed);$('replay-stops').appendChild(b);}
 setReplaySpeed(1);
-function mode(simple: boolean) { document.body.classList.toggle('simple',simple);$('mode-simple').setAttribute('aria-pressed',String(simple));$('mode-config').setAttribute('aria-pressed',String(!simple)); }
+function mode(simple: boolean) { document.body.classList.toggle('simple',simple);$('mode-simple').setAttribute('aria-pressed',String(simple));$('mode-config').setAttribute('aria-pressed',String(!simple));for(const id of ['connection-settings','motion-settings','inspection-settings','file-settings'])($(id) as HTMLDetailsElement).open=!simple; }
 $('mode-simple').onclick=()=>mode(true);$('mode-config').onclick=()=>mode(false);
-$('quick-start').onclick=async()=>{stopReplay();setTrack(false);frozenTrackTime=0;applyDataset('static-rtk');($('udp-on') as HTMLInputElement).checked=true;($('tcp-on') as HTMLInputElement).checked=false;globalClock.system();syncClockUi();await joinGroup();setRunning(true);};
+$('quick-start').onclick=async()=>{stopReplay();setTrack(false);frozenTrackTime=0;applyDataset('static-rtk');($('udp-on') as HTMLInputElement).checked=true;($('tcp-on') as HTMLInputElement).checked=false;syncClockUi();await joinGroup();setRunning(true);};
 
 $('help-open').onclick=()=>($('help-dialog') as HTMLDialogElement).showModal();$('help-close').onclick=()=>($('help-dialog') as HTMLDialogElement).close();
 mountStartup();
@@ -1026,8 +1057,8 @@ function syncClockUi(){
     const input=$(id) as HTMLInputElement;if(document.activeElement!==input)input.value=value;
   }
 }
-function currentClockUtc(){return globalClock.utc(Date.now(),performance.now())??(GPS_EPOCH_MS+(Number(state.tokens.week)*604800+Number(state.tokens.sow)-TOOL_LEAP_SECONDS)*1000);}
-function commitClock(){for(const id of ['clock-date','clock-week','clock-sow'])($(id) as HTMLInputElement).setCustomValidity('');stampGlobalTime();syncClockUi();refreshTimeHint();refreshDerived();renderWire();}
+function currentClockUtc(){const utc=globalClock.utc(Date.now(),performance.now());if(utc!==null)return utc;const week=Number(state.tokens.week),sow=Number(state.tokens.sow);return Number.isInteger(week)&&week>=0&&week<=9999&&Number.isFinite(sow)&&sow>=0&&sow<604800?GPS_EPOCH_MS+(week*604800+sow-TOOL_LEAP_SECONDS)*1000:Date.now();}
+function commitClock(){if(document.activeElement?.id!=='clock-nudge'){($('clock-nudge') as HTMLInputElement).value='0';$('clock-nudge-text').textContent='0.00 秒';}for(const id of ['clock-date','clock-week','clock-sow'])($(id) as HTMLInputElement).setCustomValidity('');stampGlobalTime();syncClockUi();refreshTimeHint();refreshDerived();renderWire();}
 $('clock-source').addEventListener('change',()=>{
   const source=($('clock-source') as HTMLSelectElement).value;
   if(source==='original')globalClock.original();else if(source==='system')globalClock.system();else globalClock.manual(currentClockUtc(),performance.now(),1);
@@ -1045,3 +1076,35 @@ for(const id of ['clock-week','clock-sow'])$(id).addEventListener('change',()=>{
 });
 syncClockUi();
 window.setInterval(()=>{syncClockUi();if(globalClock.source!=='original'){stampGlobalTime();refreshTimeHint();refreshDerived();renderWire();}},200);
+
+function updateTestSummary(){
+  if(!document.getElementById('test-state'))return;
+  for(const slider of document.querySelectorAll<HTMLInputElement>('.control-slider')){if(document.activeElement!==slider&&slider.dataset.control)slider.value=($(slider.dataset.control) as HTMLInputElement).value;}
+  const speed=Math.hypot(Number(state.tokens.ve)||0,Number(state.tokens.vn)||0);
+  $('test-state').textContent=state.lastError?'发送有问题':state.running?'正在测试':state.previewOnly||state.trackOn?'仅看演示':state.sent?'已停止':'尚未开始';
+  $('test-sent').textContent=`${state.sent} 条`;$('test-distance').textContent=`${state.distance.toFixed(2)} 米`;$('test-speed').textContent=`${speed.toFixed(3)} 米/秒`;
+  const simple=document.body.classList.contains('simple');
+  const message=state.lastError?'发送未完成：'+state.lastError+'。请展开连接设置检查目标。':dataset().fault?'这是故障报文，非法坐标不会在地图上伪造位置。':speed===0&&!dataset().motion&&!state.previewMotion?'当前是静止场景，位置保持不动；想看轨迹可选直线、慢速或绕圈。':!dataset().motion&&!($('advance-position') as HTMLInputElement).checked?'已保留原始坐标；开启“标准场景按速度更新位置”后才会推进轨迹。':speed<.1?'当前速度很低，坐标正在缓慢更新；可将地图放大到 100× 观察，报文速度保持原值。':state.running?'正在按场景速度移动，地图与发送报文使用同一份位置数据。':'已准备好。点击“开始测试”发送，或选择“仅看演示”。';
+  $('test-guidance').textContent=message;
+  $('preview-run').textContent=state.previewOnly?'停止演示':'仅看演示（不发送）';
+}
+$('trace-clear').onclick=()=>{state.mapTrail=[];state.distance=0;drawMap();};
+$('preview-run').onclick=()=>{
+  if(state.previewOnly){setRunning(false);setTrack(false);drawMap();return;}
+  setRunning(false);if(dataset().fault){updateTestSummary();return;}
+  state.previewOnly=true;($('map-source') as HTMLSelectElement).value='current';
+  if(dataset().motion)setTrack(true);else {state.positionSeed=null;state.lastPosition=null;recordTrail();startPositionFrames();}
+  drawMap();
+};
+
+function bindControlSlider(id:string,min:number,max:number,step:number,digits:number){
+  const input=$(id) as HTMLInputElement;const slider=document.createElement('input');slider.type='range';slider.className='control-slider';slider.dataset.control=id;slider.min=String(min);slider.max=String(max);slider.step=String(step);slider.value=input.value;slider.setAttribute('aria-label',input.parentElement?.textContent?.trim()+' 拖动调整');
+  input.after(slider);slider.oninput=()=>{input.value=Number(slider.value).toFixed(digits);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));};input.addEventListener('input',()=>{if(Number.isFinite(Number(input.value)))slider.value=input.value;});
+}
+for(const [id,min,max,step,digits] of [['track-heading',0,359.99,.01,2],['track-speed',0,50,.1,1],['track-radius',1,1000,1,0],['track-accel',.1,20,.1,1],['rate',.1,100,.1,1],['replay-rate',.1,100,.1,1]] as const)bindControlSlider(id,min,max,step,digits);
+mode(true);updateTestSummary();
+
+let clockNudgeBase:number|null=null;
+const nudge=$('clock-nudge') as HTMLInputElement;
+for(const event of ['pointerdown','focus'])nudge.addEventListener(event,()=>{clockNudgeBase=currentClockUtc()-Number(nudge.value)*1000;});
+nudge.addEventListener('input',()=>{const delta=Number(nudge.value);clockNudgeBase??=currentClockUtc()-delta*1000;globalClock.manual(clockNudgeBase+delta*1000,performance.now(),0);$('clock-nudge-text').textContent=`${delta>=0?'+':''}${delta.toFixed(2)} 秒`;stampGlobalTime();syncClockUi();refreshDerived();renderWire();});
