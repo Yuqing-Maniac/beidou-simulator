@@ -166,7 +166,7 @@ jobs:
         with:
           name: beichen-linux-arm64
           path: |
-            release/*.tar.gz
+            release/BeidouSimulator_*.tar.gz
             release/*.bcu
             release/*.bcu.sha256
             release/SHA256SUMS.linux-arm64.txt
