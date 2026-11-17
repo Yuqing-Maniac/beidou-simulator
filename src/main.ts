@@ -1,3 +1,4 @@
+import { datasetPosition } from "./dataset-motion.ts";
 import { mountTutorial } from "./tutorial.ts";
 import { ReplayClock, replayTimeline, speedToSlider, sliderToSpeed } from "./replay.ts";
 import { coordinate, parseCoordinate, type CoordinateFormat } from "./coordinates.ts";
@@ -44,6 +45,11 @@ const state = {
   tokens: { ...DATASETS[0].tokens } as Tokens,
   checksumOverride: undefined as string | undefined,
   running: false,
+  positionSeed: null as Tokens|null,
+  positionStartedAt: 0,
+  lastPosition: null as {lat:string;lon:string}|null,
+  positionFrame: 0,
+  distance: 0,
   timer: 0,
   savedTime: null as { week: string; sow: string } | null,
   trackOn: false,
@@ -68,14 +74,14 @@ function dataset(): Dataset {
 
 function applyDataset(id: string) {
   const d = DATASETS.find((x) => x.id === id) ?? DATASETS[0];
-  setTrack(false); frozenTrackTime=0; state.mapTrail=[]; state.previewMotion=Boolean(d.motion);
+  setRunning(false);setTrack(false);state.positionSeed=null;state.lastPosition=null;state.distance=0; frozenTrackTime=0; state.mapTrail=[]; state.previewMotion=Boolean(d.motion);
   state.datasetId = d.id;
   state.tokens = { ...d.tokens };
   state.checksumOverride = d.checksumOverride;
   if (d.motion) ($('track-kind') as HTMLSelectElement).value=d.motion;
   if(Math.abs(Number(d.tokens.lat))<=90&&Math.abs(Number(d.tokens.lon))<=180) {
-    ($('track-lat') as HTMLInputElement).value=Number(d.tokens.lat).toFixed(8);
-    ($('track-lon') as HTMLInputElement).value=Number(d.tokens.lon).toFixed(8);
+    setTrackCoordinate('lat',Number(d.tokens.lat));
+    setTrackCoordinate('lon',Number(d.tokens.lon));
   }
   ($('track-heading') as HTMLInputElement).value=d.tokens.heading;
   renderDataset();
@@ -480,7 +486,15 @@ function stampLive() {
     const text = { ...formatTrackTokens(motion), pitch: motion.pitch.toFixed(2), roll: motion.roll.toFixed(2), ax: motion.ax.toFixed(4), ay: motion.ay.toFixed(4), az: motion.az.toFixed(4) };
     Object.assign(state.tokens, text);
   }
-  if (useTime || state.trackOn) {
+  if(state.running&&!state.trackOn&&!dataset().motion&&!dataset().fault&&($('advance-position') as HTMLInputElement).checked){
+    const seed=state.positionSeed;
+    if(!seed||['ve','vn'].some(k=>seed[k]!==state.tokens[k])||state.lastPosition&&(state.tokens.lat!==state.lastPosition.lat||state.tokens.lon!==state.lastPosition.lon)){
+      state.positionSeed={...state.tokens};state.positionStartedAt=performance.now();
+    }
+    const position=datasetPosition(state.positionSeed!, (performance.now()-state.positionStartedAt)/1000);
+    if(position){Object.assign(state.tokens,position);state.lastPosition=position;}
+  }
+  if (useTime || state.trackOn || state.running) {
     refreshDerived();
     renderWire();
   }
@@ -509,20 +523,30 @@ async function sendOnce() {
   }
 }
 
+function recordTrail() {
+  const p={lat:Number(state.tokens.lat),lon:Number(state.tokens.lon)};
+  if(!Number.isFinite(p.lat)||!Number.isFinite(p.lon)||Math.abs(p.lat)>90||Math.abs(p.lon)>180)return;
+  const last=state.mapTrail[state.mapTrail.length-1];
+  const delta=last?latLonToMeters(last,p):{east:0,north:0};const distance=Math.hypot(delta.east,delta.north);
+  if(!last||distance>=.001){state.distance+=distance;state.mapTrail.push(p);if(state.mapTrail.length>2000)state.mapTrail.shift();}
+}
 function setRunning(on: boolean) {
-  if(dataset().motion) setTrack(on);
-  state.running = on;
-  window.clearInterval(state.timer);
-  const run = $("send-run");
-  run.classList.toggle("is-on", on);
-  run.setAttribute("aria-pressed", on ? "true" : "false");
-  const hz = Number(($("rate") as HTMLInputElement).value);
-  const rate = Number.isFinite(hz) && hz > 0 ? hz : 10;
-  run.textContent = on ? "暂停" : "连续发送";
-  run.title = on ? `正在按 ${rate} Hz 发送。该速率是工具建议，表内未规定。` : "按工具建议的速率连续发送";
-  if (on) {
-    void sendOnce();
-    state.timer = window.setInterval(() => void sendOnce(), 1000 / rate);
+  if(!on&&state.running){stampLive();recordTrail();}
+  if(dataset().motion&&state.trackOn!==on)setTrack(on);
+  state.running=on;window.clearInterval(state.timer);cancelAnimationFrame(state.positionFrame);
+  if(!on){state.positionSeed=null;state.lastPosition=null;drawMap();}
+  const run=$('send-run');run.classList.toggle('is-on',on);run.setAttribute('aria-pressed',String(on));
+  const hz=Number(($('rate') as HTMLInputElement).value);const rate=Number.isFinite(hz)&&hz>0?hz:10;
+  run.textContent=on?'暂停':'连续发送';
+  run.title=on?`每秒发送 ${rate} 条，地图按相同速度推进位置`:'开始连续发送当前场景';
+  if(on){
+    ($('map-source') as HTMLSelectElement).value='current';recordTrail();
+    void sendOnce();state.timer=window.setInterval(()=>void sendOnce(),1000/rate);
+    let lastFrame=0;const update=(now:number)=>{
+      if(!state.running)return;
+      if(!state.trackOn&&now-lastFrame>=80){stampLive();recordTrail();drawMap();lastFrame=now;}
+      state.positionFrame=requestAnimationFrame(update);
+    };state.positionFrame=requestAnimationFrame(update);
   }
 }
 
@@ -651,20 +675,15 @@ function drawMap() {
   if (spec.kind === "path") preview.splice(0, preview.length, ...spec.points, ...(spec.loop && spec.points.length ? [spec.points[0]] : []));
   const origin = ($("map-source") as HTMLSelectElement).value==="receive"&&valid ? {lat,lon} : { lat: numInput("track-lat", 31.15960455), lon: numInput("track-lon", 121.1784799) };
   if(!state.previewMotion)preview.length=0;
-  const pts = [...preview, now, origin];
+  const pts = [...preview, ...state.mapTrail, now, origin];
   const meters = pts.map((p) => latLonToMeters(origin, p));
   let minE = Math.min(...meters.map((p) => p.east));
   let maxE = Math.max(...meters.map((p) => p.east));
   let minN = Math.min(...meters.map((p) => p.north));
   let maxN = Math.max(...meters.map((p) => p.north));
-  if (maxE - minE < 700) {
-    minE -= 350;
-    maxE += 350;
-  }
-  if (maxN - minN < 700) {
-    minN -= 350;
-    maxN += 350;
-  }
+  const minimumSpan=700/Math.max(1,numInput('map-zoom',1));
+  if(maxE-minE<minimumSpan){const mid=(minE+maxE)/2;minE=mid-minimumSpan/2;maxE=mid+minimumSpan/2;}
+  if(maxN-minN<minimumSpan){const mid=(minN+maxN)/2;minN=mid-minimumSpan/2;maxN=mid+minimumSpan/2;}
   const pad = 28;
   const scale = Math.min((w - pad * 2) / (maxE - minE), (h - pad * 2) / (maxN - minN));
   const ox = pad + (w - pad * 2 - (maxE - minE) * scale) / 2 - minE * scale;
@@ -730,9 +749,7 @@ function setTrack(on: boolean) {
   const loop = () => {
     if (!state.trackOn) return;
     stampLive();
-    const last=state.mapTrail[state.mapTrail.length-1];
-    const next={lat:Number(state.tokens.lat),lon:Number(state.tokens.lon)};
-    if(!last || Math.hypot(next.lat-last.lat,next.lon-last.lon)>0.000005){state.mapTrail.push(next);if(state.mapTrail.length>2000)state.mapTrail.shift();}
+    recordTrail();
     drawMap();
     state.trackFrame = window.requestAnimationFrame(loop);
   };
@@ -817,7 +834,7 @@ if (window.beidou) {
 }
 const nicsReady = refreshNics();
 
-const controlIds = ['replay-speed','replay-rate','coord-format','unicast-on','unicast-host','unicast-port','host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
+const controlIds = ['advance-position','map-zoom','replay-speed','replay-rate','coord-format','unicast-on','unicast-host','unicast-port','host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
 const statusText = (text: string) => { $('file-status').textContent = text; };
 function download(name: string, content: string, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([content],{type}));
@@ -986,3 +1003,6 @@ for(const axis of ['lat','lon'] as const){const el=$('track-'+axis) as HTMLInput
 refreshTrackCoordinates(true);
 
 mountTutorial({navigate:show,mode});
+
+$('map-zoom').addEventListener('change',drawMap);
+$('advance-position').addEventListener('change',()=>{state.positionSeed=null;state.lastPosition=null;});
