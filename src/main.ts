@@ -1,3 +1,8 @@
+import mapCredits from "../public/maps/README.txt?raw";
+import mapLicense from "../public/maps/ODbL-1.0.txt?raw";
+import {FaultInjector,FAULT_KINDS,validateFaultSettings,type FaultSettings,type FaultResult} from "./fault-injection.ts";
+import {fitMapView,mapScaleText} from "./map-viewport.ts";
+import {REGIONS,regionById,pointInRegion,loadRegionMap,drawRegionMap,type RegionMap} from "./regions.ts";
 import { parameterSpec } from "./parameter-controls.ts";
 import { DebugClock, applyOutgoingTime } from "./global-time.ts";
 import { datasetPosition } from "./dataset-motion.ts";
@@ -43,9 +48,16 @@ type StreamRow = {
 
 const globalClock=new DebugClock();globalClock.system();
 let streamTimer=0;
+const faultInjector=new FaultInjector();
+let faultSettings:FaultSettings={enabled:false,mode:'ratio',percent:10,kinds:['checksum','no-fix','position-jump'],seed:2026};
+let regionMap:RegionMap|null=null;
+let regionLoadGeneration=0;
+let regionMessage='';
+const faultPositions:{lat:number;lon:number;kind:string}[]=[];
 const archive: (StreamRow & { timestamp: string })[] = [];
 const state = {
   datasetId: 'motion-line',
+  sceneGeneration:0,
   tokens: { ...DATASETS.find(d=>d.id==='motion-line')!.tokens } as Tokens,
   checksumOverride: undefined as string | undefined,
   running: false,
@@ -83,14 +95,18 @@ function dataset(): Dataset {
 function applyDataset(id: string) {
   const d = DATASETS.find((x) => x.id === id) ?? DATASETS[0];
   setRunning(false);setTrack(false);state.positionSeed=null;state.lastPosition=null;state.distance=0;state.sent=0;state.failed=0;state.lastError="";state.previewOnly=false; frozenTrackTime=0; state.mapTrail=[]; state.previewMotion=Boolean(d.motion);
+  state.sceneGeneration++;
   state.datasetId = d.id;
   state.tokens = { ...d.tokens };
+  const region=regionById(($('map-region') as HTMLSelectElement).value);
+  if(region&&Number.isFinite(Number(d.tokens.lat))&&Math.abs(Number(d.tokens.lat))<=90&&Math.abs(Number(d.tokens.lon))<=180){state.tokens.lat=region.center.lat.toFixed(8);state.tokens.lon=region.center.lon.toFixed(8);}
+  faultPositions.length=0;
   stampGlobalTime();
   state.checksumOverride = d.checksumOverride;
   if (d.motion) ($('track-kind') as HTMLSelectElement).value=d.motion;
   if(Math.abs(Number(d.tokens.lat))<=90&&Math.abs(Number(d.tokens.lon))<=180) {
-    setTrackCoordinate('lat',Number(d.tokens.lat));
-    setTrackCoordinate('lon',Number(d.tokens.lon));
+    setTrackCoordinate('lat',Number(state.tokens.lat));
+    setTrackCoordinate('lon',Number(state.tokens.lon));
   }
   ($('track-heading') as HTMLInputElement).value=d.tokens.heading;
   renderDataset();
@@ -111,7 +127,7 @@ function renderDataset() {
   for (const d of DATASETS) {
     const b = document.createElement("button");
     b.type = "button";
-    const friendly:Record<string,string>={"motion-line":"直线行驶","motion-circle":"绕圈行驶","motion-eight":"8 字行驶",slow:"慢速行驶",reverse:"倒车","static-rtk":"原地停车"};
+    const friendly:Record<string,string>={"motion-line":"直线行驶","motion-circle":"绕圈行驶","motion-eight":"8 字行驶","motion-stop-go":"周期启停","motion-slalom":"蛇形行驶",slow:"慢速行驶",reverse:"倒车","static-rtk":"原地停车"};
     b.dataset.scenario=d.id;
     b.className = "set"+(!friendly[d.id]?" advanced-scenario":"") + (d.id === state.datasetId ? " is-on" : "") + (d.fault ? " is-fault" : "");
     b.innerHTML = `<span class="scenario-tag">${d.fault ? "协议故障" : d.id === "official" ? "协议基准" : "工况模拟"}</span><strong><span class="scene-friendly">${escapeHtml(friendly[d.id]??d.name)}</span><span class="scene-protocol">${escapeHtml(d.name)}</span></strong><small>${escapeHtml(d.purpose)}</small>`;
@@ -395,6 +411,12 @@ type LivePacket = {
 declare global {
   interface Window {
     beidou?: {
+      updateInfo:()=>Promise<{version:string;runtimeVersion:string;pending:boolean;canRollback:boolean;rolledBack:boolean}>;
+      previewUpdate:()=>Promise<null|{token:string;baseVersion:string;version:string;changedFiles:number;removedFiles:number;bytes:number;sha256:string}>;
+      applyUpdate:(token:string)=>Promise<{version:string;restartRequired:boolean}>;
+      restartUpdate:()=>Promise<void>;
+      rollbackUpdate:()=>Promise<void>;
+      updateHealthy:()=>Promise<boolean>;
       fullscreen: (toggle?:boolean) => Promise<boolean>;
       nics: () => Promise<Nic[]>;
       listen: (cfg: Record<string, unknown>) => Promise<unknown>;
@@ -523,7 +545,10 @@ function stampLive() {
 
 async function sendOnce() {
   stampLive();
-  const sentence = currentSentence();
+  const generation=state.sceneGeneration;
+  const injected=prepareOutgoing(currentSentence());
+  const sentence=injected.sentence;
+  const faultNote=injected.injected?` · 故障注入：${FAULT_KINDS.find(f=>f.id===injected.kind)?.name}`:injected.reason?` · ${injected.reason}`:"";
   const cfg = netConfig();
   try {
     const data = window.beidou
@@ -533,15 +558,16 @@ async function sendOnce() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ ...cfg, sentence }),
         })).json()) as { ok?: boolean; bytes?: number; error?: string; channels?: string[]; tcpError?: string });
-    if (data.ok === false) {state.failed++;state.lastError=data.error??"未能发出";pushRow("发送", sentence, `未发出：${data.error ?? ""}`);}
+    if(generation!==state.sceneGeneration){pushRow("发送",sentence,`上一场景发送完成${data.ok===false?"（未发出）":""}${faultNote}`);return;}
+    if (data.ok === false) {state.failed++;state.lastError=data.error??"未能发出";pushRow("发送", sentence, `未发出：${data.error ?? ""}${faultNote}`);}
     else {
       if(data.channels?.length){state.sent++;state.lastError=data.tcpError??"";}else {state.failed++;state.lastError=data.tcpError??"没有可用的发送连接";}
       const channels = (data.channels ?? []).join("+") || "无";
       const extra = data.tcpError ? ` · ${data.tcpError}` : "";
-      pushRow("发送", sentence, `${channels} ${cfg.host}:${cfg.port} · ${data.bytes ?? sentence.length} 字节 · ${cfg.iface || "默认网卡"}${extra}`);
+      pushRow("发送", sentence, `${channels} ${cfg.host}:${cfg.port} · ${data.bytes ?? sentence.length} 字节 · ${cfg.iface || "默认网卡"}${extra}${faultNote}`);
     }
   } catch (err) {
-    state.failed++;state.lastError=err instanceof Error?err.message:String(err);
+    if(generation===state.sceneGeneration){state.failed++;state.lastError=err instanceof Error?err.message:String(err);}
     pushRow("发送", sentence, `未发出：${err instanceof Error ? err.message : String(err)}`);
   }
   updateTestSummary();
@@ -675,7 +701,7 @@ function trackSpec(): TrackSpec {
     const points = state.path.length ? state.path : [{ lat, lon }];
     return { kind: "path", points, speedMps, loop: ($("track-loop") as HTMLInputElement).checked };
   }
-  return { kind: kind as "line" | "circle" | "eight", lat, lon, headingDeg, speedMps, radiusM };
+  return { kind: kind as Exclude<TrackSpec["kind"],"path">, lat, lon, headingDeg, speedMps, radiusM };
 }
 
 function liveMotion(t: number) { return sampleDynamics(trackSpec(), t, numInput("track-accel", 2)); }
@@ -707,25 +733,26 @@ function drawMap() {
   if (spec.kind === "path") preview.splice(0, preview.length, ...spec.points, ...(spec.loop && spec.points.length ? [spec.points[0]] : []));
   const origin = ($("map-source") as HTMLSelectElement).value==="receive"&&valid ? {lat,lon} : { lat: numInput("track-lat", 31.15960455), lon: numInput("track-lon", 121.1784799) };
   if(!state.previewMotion)preview.length=0;
-  const pts = [...preview, ...state.mapTrail, now, origin];
-  const meters = pts.map((p) => latLonToMeters(origin, p));
-  let minE = Math.min(...meters.map((p) => p.east));
-  let maxE = Math.max(...meters.map((p) => p.east));
-  let minN = Math.min(...meters.map((p) => p.north));
-  let maxN = Math.max(...meters.map((p) => p.north));
-  const minimumSpan=700/Math.max(1,numInput('map-zoom',1));
-  if(maxE-minE<minimumSpan){const mid=(minE+maxE)/2;minE=mid-minimumSpan/2;maxE=mid+minimumSpan/2;}
-  if(maxN-minN<minimumSpan){const mid=(minN+maxN)/2;minN=mid-minimumSpan/2;maxN=mid+minimumSpan/2;}
-  const pad = 28;
-  const scale = Math.min((w - pad * 2) / (maxE - minE), (h - pad * 2) / (maxN - minN));
-  const ox = pad + (w - pad * 2 - (maxE - minE) * scale) / 2 - minE * scale;
-  const oy = pad + (h - pad * 2 - (maxN - minN) * scale) / 2 + maxN * scale;
-  state.mapView = { origin, ox, oy, scale };
+  const pts = [...preview, ...state.mapTrail, ...faultPositions, now, origin];
+  const automatic=($('map-zoom') as HTMLSelectElement).value==='auto';
+  const view=fitMapView(origin,pts,w,h,{automatic,zoom:numInput('map-zoom',1),speed:state.previewMotion?Math.max(numInput("track-speed",10),Math.hypot(now.ve,now.vn)):Math.hypot(now.ve,now.vn),regional:Boolean(regionById(($('map-region') as HTMLSelectElement).value))});
+  const {scale,ox,oy}=view;
+  state.mapView = view;
+  $('map-scale').textContent=`${automatic?'自动适配 · ':''}${mapScaleText(scale)} · 当前点、轨迹及故障点完整显示`;
   const at = (p: LatLon) => {
     const m = latLonToMeters(origin, p);
     return { x: ox + m.east * scale, y: oy - m.north * scale };
   };
-  drawBasemap(ctx,ox,oy,scale,w,h);
+  const region=regionById(($('map-region') as HTMLSelectElement).value);
+  if(region){
+    if(regionMap?.region===region.id)drawRegionMap(ctx,regionMap,at,w,h);
+    else {ctx.fillStyle='#edf1eb';ctx.fillRect(0,0,w,h);ctx.fillStyle='#617a7c';ctx.fillText(regionMessage||'正在加载离线地图…',20,35);}
+    $('map-attribution').textContent=`${region.name} · © OpenStreetMap contributors · ODbL 1.0 · 离线简化地图（WGS84）`;
+    if(valid&&!pointInRegion(region,now))$('map-status').textContent='当前位置超出离线数据范围，请使用“在此区域开始”设置起点。';
+  } else {drawBasemap(ctx,ox,oy,scale,w,h);$('map-attribution').textContent='离线试验场示意底图 · 不代表真实地理。';}
+  if(regionMessage&&region)$('map-status').textContent=regionMessage;
+  for(const p of faultPositions){const q=at(p);if(q.x<0||q.y<0||q.x>w||q.y>h)continue;ctx.fillStyle='#a94a9d';ctx.beginPath();ctx.moveTo(q.x,q.y-6);ctx.lineTo(q.x+6,q.y);ctx.lineTo(q.x,q.y+6);ctx.lineTo(q.x-6,q.y);ctx.closePath();ctx.fill();}
+
   ctx.strokeStyle = "#0c6b5c";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -750,6 +777,7 @@ function drawMap() {
   const x = here.x;
   const y = here.y;
   ctx.save();
+  ctx.beginPath();ctx.fillStyle='#b8264640';ctx.arc(x,y,16,0,Math.PI*2);if(valid)ctx.fill();
   ctx.translate(x, y);
   ctx.rotate((now.headingDeg * Math.PI) / 180);
   ctx.fillStyle = "#9d1730";
@@ -860,7 +888,7 @@ if (window.beidou) {
 }
 const nicsReady = refreshNics();
 
-const controlIds = ['advance-position','map-zoom','replay-speed','replay-rate','coord-format','unicast-on','unicast-host','unicast-port','host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
+const controlIds = ['map-region','advance-position','map-zoom','replay-speed','replay-rate','coord-format','unicast-on','unicast-host','unicast-port','host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
 const statusText = (text: string) => { $('file-status').textContent = text; };
 function download(name: string, content: string, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([content],{type}));
@@ -869,7 +897,7 @@ function download(name: string, content: string, type = 'application/json') {
 function snapshot() {
   const controls: Record<string,string|boolean> = {};
   for(const id of controlIds) { const el=$(id) as HTMLInputElement; controls[id]=el.type==='checkbox'?el.checked:(id==='track-lat'||id==='track-lon')?String(numInput(id,0)):el.value; }
-  return {version:1 as const,datasetId:state.datasetId,tokens:state.tokens,controls,path:state.path,checksumOverride:state.checksumOverride,globalTime:{source:globalClock.source,utc:globalClock.utc(Date.now(),performance.now()),rate:globalClock.rate}};
+  return {version:1 as const,datasetId:state.datasetId,tokens:state.tokens,controls,path:state.path,checksumOverride:state.checksumOverride,globalTime:{source:globalClock.source,utc:globalClock.utc(Date.now(),performance.now()),rate:globalClock.rate},faultInjection:{...faultSettings,kinds:[...faultSettings.kinds]}};
 }
 function restore(text: string) {
   const v=parseWorkspace(text);
@@ -879,8 +907,10 @@ function restore(text: string) {
   if(clockSettings?.source==='manual')globalClock.manual(clockSettings.utc,performance.now(),clockSettings.rate);
   else if(clockSettings?.source==='system'||!clockSettings&&v.controls['use-sys-time']===true)globalClock.system();
   else globalClock.original();
+  state.sceneGeneration++;state.distance=0;state.sent=0;state.failed=0;state.lastError="";state.positionSeed=null;state.lastPosition=null;
   state.datasetId=v.datasetId; state.tokens={...v.tokens}; state.path=v.path; state.checksumOverride=v.checksumOverride;
   for(const id of controlIds) { const el=$(id) as HTMLInputElement; const value=v.controls[id]; if(typeof value==='boolean'&&el.type==='checkbox')el.checked=value; else if(typeof value==='string'&&el.type!=='checkbox')el.value=value; }
+  restoreFaultSettings(v.faultInjection);void loadSelectedRegion(false);
   refreshTrackCoordinates(true);previousCoordFormat=coordFormat();
   state.previewMotion=Boolean(dataset().motion); state.mapTrail=[];
   setReplaySpeed(sliderToSpeed(Number(($('replay-speed') as HTMLInputElement).value)));
@@ -936,11 +966,11 @@ $('replay-run').onclick=()=>{
       while(replayIndex<replay.length && replayTimes[replayIndex]<=replayClock.time(performance.now()) && count++<100){
         if(generation!==replayGeneration)return;
         const sentence=replay[replayIndex++].sentence;pushRow('接收',sentence,'文件回放');
-        if(network){const outgoing=applyOutgoingTime(sentence,globalClock.stamp(Date.now(),performance.now()));const cfg={...netConfig(),sentence:outgoing};
+        if(network){const injected=prepareOutgoing(applyOutgoingTime(sentence,globalClock.stamp(Date.now(),performance.now())));const outgoing=injected.sentence;const cfg={...netConfig(),sentence:outgoing};
           const result=window.beidou?await window.beidou.send(cfg):await(await fetch('./api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json();
           if(generation!==replayGeneration)return;
           if(result.ok===false||result.tcpError)throw new Error(result.error||result.tcpError);
-          pushRow('发送',outgoing,'文件回放网络发送 · 全局时间来源：'+globalClock.source);
+          pushRow('发送',outgoing,'文件回放网络发送 · 全局时间来源：'+globalClock.source+(injected.injected?' · 故障注入：'+injected.kind:''));
         }
       }
       if(generation!==replayGeneration)return;
@@ -1088,7 +1118,7 @@ function updateTestSummary(){
   $('test-guidance').textContent=message;
   $('preview-run').textContent=state.previewOnly?'停止演示':'仅看演示（不发送）';
 }
-$('trace-clear').onclick=()=>{state.mapTrail=[];state.distance=0;drawMap();};
+$('trace-clear').onclick=()=>{state.mapTrail=[];state.distance=0;faultPositions.length=0;drawMap();};
 $('preview-run').onclick=()=>{
   if(state.previewOnly){setRunning(false);setTrack(false);drawMap();return;}
   setRunning(false);if(dataset().fault){updateTestSummary();return;}
@@ -1108,3 +1138,91 @@ let clockNudgeBase:number|null=null;
 const nudge=$('clock-nudge') as HTMLInputElement;
 for(const event of ['pointerdown','focus'])nudge.addEventListener(event,()=>{clockNudgeBase=currentClockUtc()-Number(nudge.value)*1000;});
 nudge.addEventListener('input',()=>{const delta=Number(nudge.value);clockNudgeBase??=currentClockUtc()-delta*1000;globalClock.manual(clockNudgeBase+delta*1000,performance.now(),0);$('clock-nudge-text').textContent=`${delta>=0?'+':''}${delta.toFixed(2)} 秒`;stampGlobalTime();syncClockUi();refreshDerived();renderWire();});
+
+function refreshFaultSummary(){
+  const stats=faultInjector.stats();
+  $('fault-percent-text').textContent=`${faultSettings.percent}%`;
+  $('fault-summary').textContent=faultSettings.enabled?`${faultSettings.mode==='ratio'?'按比例':'随机'} ${faultSettings.percent}% · 已构造 ${stats.injected} 条故障`:'已关闭 · 正常发送';
+  $('fault-status').textContent=`已处理 ${stats.total} 条 · 有效候选 ${stats.eligible} 条 · 已构造故障 ${stats.injected} 条 · 跳过 ${stats.skipped} 条。计数是发送前构造次数，连接失败不代表对端收到。`;
+}
+function prepareOutgoing(sentence:string):FaultResult{
+  const result=faultInjector.apply(sentence);
+  if(result.injected){
+    const t=decodeSentence(result.sentence).tokens,lat=Number(t.lat),lon=Number(t.lon);
+    if(t.lat?.trim()&&t.lon?.trim()&&Number.isFinite(lat)&&Number.isFinite(lon)&&Math.abs(lat)<=90&&Math.abs(lon)<=180){faultPositions.push({lat,lon,kind:result.kind!});if(faultPositions.length>100)faultPositions.shift();}
+  }
+  refreshFaultSummary();if(result.injected)drawMap();return result;
+}
+function restoreFaultSettings(settings?:FaultSettings){
+  faultSettings=validateFaultSettings(settings??{enabled:false,mode:'ratio',percent:10,kinds:['checksum','no-fix','position-jump'],seed:2026});
+  ($('fault-enabled') as HTMLInputElement).checked=faultSettings.enabled;
+  ($('fault-mode') as HTMLSelectElement).value=faultSettings.mode;
+  ($('fault-percent') as HTMLInputElement).value=String(faultSettings.percent);
+  ($('fault-seed') as HTMLInputElement).value=String(faultSettings.seed);
+  for(const input of document.querySelectorAll<HTMLInputElement>('#fault-kinds input'))input.checked=faultSettings.kinds.includes(input.value as FaultSettings['kinds'][number]);
+  faultInjector.configure(faultSettings);faultPositions.length=0;refreshFaultSummary();
+}
+for(const input of document.querySelectorAll<HTMLInputElement>('#fault-settings input,#fault-settings select'))input.addEventListener(input.type==='range'?'input':'change',()=>{
+  const kinds=[...document.querySelectorAll<HTMLInputElement>('#fault-kinds input:checked')].map(e=>e.value) as FaultSettings['kinds'];
+  if(!kinds.length){(input as HTMLInputElement).checked=true;kinds.push(input.value as FaultSettings['kinds'][number]);}
+  const seed=$('fault-seed') as HTMLInputElement;
+  const seedValue=Number(seed.value);
+  if(!seed.value.trim()||!Number.isInteger(seedValue)||seedValue<0||seedValue>4294967295){seed.value=String(faultSettings.seed);}
+  faultSettings=validateFaultSettings({enabled:($('fault-enabled') as HTMLInputElement).checked,mode:($('fault-mode') as HTMLSelectElement).value,percent:Number(($('fault-percent') as HTMLInputElement).value),seed:Number(seed.value),kinds});
+  faultInjector.configure(faultSettings);faultPositions.length=0;refreshFaultSummary();drawMap();
+});
+$('fault-reset').onclick=()=>{faultInjector.reset();faultPositions.length=0;refreshFaultSummary();drawMap();};
+restoreFaultSettings();
+
+async function loadSelectedRegion(move:boolean){
+  const generation=++regionLoadGeneration,region=regionById(($('map-region') as HTMLSelectElement).value);
+  regionMap=null;regionMessage=region?'正在加载本地离线地图…':'';
+  if(move){
+    state.sceneGeneration++;state.sent=0;state.failed=0;state.lastError="";
+    setRunning(false);stopReplay();frozenTrackTime=0;state.positionSeed=null;state.lastPosition=null;state.mapTrail=[];state.distance=0;state.path=[];faultPositions.length=0;
+    if(region){state.tokens.lat=region.center.lat.toFixed(8);state.tokens.lon=region.center.lon.toFixed(8);setTrackCoordinate('lat',region.center.lat);setTrackCoordinate('lon',region.center.lon);}
+    ($('map-source') as HTMLSelectElement).value='current';($('map-zoom') as HTMLSelectElement).value='auto';
+    refreshDerived();renderWire();
+  }
+  drawMap();if(!region)return;
+  try{const map=await loadRegionMap(region.id);if(generation!==regionLoadGeneration)return;regionMap=map;regionMessage='';}
+  catch(error){if(generation!==regionLoadGeneration)return;regionMessage=`离线地图未能加载：${error instanceof Error?error.message:String(error)}`;}
+  drawMap();
+}
+$('map-region').addEventListener('change',()=>void loadSelectedRegion(true));
+$('region-start').onclick=()=>void loadSelectedRegion(true);
+void loadSelectedRegion(false);
+
+let updateToken:string|null=null;
+async function refreshUpdateInfo(){
+  if(!window.beidou?.updateInfo)return;
+  const info=await window.beidou.updateInfo();
+  $('update-current').textContent=`当前版本 ${info.version} · ${info.rolledBack?'上次升级未完成，已回退。':info.pending?'升级已安装，等待重启。':'可以导入对应基础版本的 .bcu 增量包。'}`;
+  ($('update-import') as HTMLButtonElement).disabled=info.pending;
+  ($('update-restart') as HTMLButtonElement).disabled=!info.pending;
+  ($('update-rollback') as HTMLButtonElement).disabled=!info.canRollback;
+}
+$('update-import').onclick=async()=>{
+  try{
+    updateToken=null;($('update-apply') as HTMLButtonElement).disabled=true;
+    const preview=await window.beidou!.previewUpdate();if(!preview)return;
+    updateToken=preview.token;
+    $('update-preview').textContent=`${preview.baseVersion} → ${preview.version}；变更 ${preview.changedFiles} 个文件，删除 ${preview.removedFiles} 个文件，变更内容 ${(preview.bytes/1024/1024).toFixed(2)} MB。SHA256：${preview.sha256}。请与可信 Release 的校验值核对后确认安装。`;
+    ($('update-apply') as HTMLButtonElement).disabled=false;
+  }catch(error){$('update-preview').textContent=`无法预览增量包：${error instanceof Error?error.message:String(error)}`;}
+};
+$('update-apply').onclick=async()=>{
+  if(!updateToken)return;
+  ($('update-apply') as HTMLButtonElement).disabled=true;
+  try{
+    const result=await window.beidou!.applyUpdate(updateToken);updateToken=null;
+    $('update-preview').textContent=`${result.version} 已校验并安装到暂存目录。请保存配置后重启；当前发送不会被安装操作打断。`;
+    await refreshUpdateInfo();
+  }catch(error){updateToken=null;$('update-preview').textContent=`升级未完成：${error instanceof Error?error.message:String(error)}`;}
+};
+$('update-restart').onclick=async()=>{setRunning(false);stopReplay();await window.beidou!.restartUpdate();};
+$('update-rollback').onclick=async()=>{setRunning(false);stopReplay();await window.beidou!.rollbackUpdate();};
+if(window.beidou?.updateInfo)void refreshUpdateInfo().then(()=>window.beidou!.updateHealthy()).catch(error=>{$('update-preview').textContent=`升级状态检查失败：${String(error)}`;});
+
+$('map-credits').textContent=mapCredits;
+$('map-license').textContent=mapLicense;

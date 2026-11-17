@@ -72,9 +72,9 @@
   {
     "id": "scenarios",
     "file": "scenarios.mp3",
-    "duration": 24.024,
-    "textSha256": "8a987ac0f5510037bd1e23e5ede580109b20f332a33392f92bb4e58c599ac765",
-    "audioSha256": "c77a30b68187eb6fe35573e7f4727534b0397f8a96be67ffff5ccb4f9225d88c"
+    "duration": 23.981,
+    "textSha256": "8b137c3d121ff079c7be0f98ea25b2fc0f772b5ca05c6bd065ff8202f5e9989d",
+    "audioSha256": "f7e09471344047f9f39e0a35f885e40aac4f02a3d057a49af61f8180660745bd"
   },
   {
     "id": "fields",
@@ -166,5 +166,33 @@
     "duration": 26.4,
     "textSha256": "9dcf1fa2d26aeb13c21f83ab15ca06ea9f516081320b1031cc12793bb5842743",
     "audioSha256": "4a613f8fa19911a0fc0d02318902137bb8401ccb7f33794e951acbd66706e74a"
+  },
+  {
+    "id": "regular-motion",
+    "file": "regular-motion.mp3",
+    "duration": 32.107,
+    "textSha256": "56402b69fd39571e892345ee63634ebf5517db07b89bb00f977184d287845f64",
+    "audioSha256": "67ea09c279f8dbb42d74fef236be6511bfe6dd139274f74ae80d327c9e543aca"
+  },
+  {
+    "id": "fault-injection",
+    "file": "fault-injection.mp3",
+    "duration": 34.113,
+    "textSha256": "8f4ddcef4488dc4104d893fd51f2d0eaf3ee9ccd23abc8aa29d6ee3c6c4ad726",
+    "audioSha256": "cf1eb342ffb4754985409e8e6896c7b4ccd92a1b2d300e4303810aef9776db5a"
+  },
+  {
+    "id": "offline-regions",
+    "file": "offline-regions.mp3",
+    "duration": 34.295,
+    "textSha256": "eb53f9e7e4d595110cd24be711cedc1b2b116e4aafbd1d3ddafbd91133d48792",
+    "audioSha256": "544a5f2bbf0c7c8ea46f565a5bdfec4173a231f764c40ba93fcfc7fd79b7cb38"
+  },
+  {
+    "id": "incremental-upgrade",
+    "file": "incremental-upgrade.mp3",
+    "duration": 36.083,
+    "textSha256": "6f70bd1b6a884fb2f25efba855c6241713a950c2db1b08998d14ff3005bc347c",
+    "audioSha256": "5d24a7d552ea8116bab94cf446b83c1036c530f0c09a14f6ebbe19e9c8053722"
   }
 ]

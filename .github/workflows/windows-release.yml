@@ -5,7 +5,11 @@ on:
       tag:
         description: Existing release tag to build
         required: true
-        default: v0.7.0-test
+        default: v0.8.0-test
+      base_tag:
+        description: Previous compatible release tag for an additional incremental package (empty for first full bootstrap release)
+        required: false
+        default: ''
 permissions:
   contents: write
 jobs:
@@ -23,7 +27,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Validate bundled tutorial and narration
-        run: node --experimental-strip-types --test test/tutorial.test.ts
+        run: node --experimental-strip-types --test test/protocol.test.ts test/motion.test.ts test/workspace.test.ts test/tutorial.test.ts test/fault-injection.test.ts test/map-viewport.test.ts test/regions.test.ts
+      - name: Validate incremental update engine
+        run: node --test test/update.test.cjs
       - name: Build Windows packages
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -42,6 +48,28 @@ jobs:
           node scripts/windows-smoke.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Packaged UI smoke test failed' }
           Get-Process -Name beidou-simulator -ErrorAction SilentlyContinue | Stop-Process -Force
+      - name: Native incremental activation and rollback
+        run: node scripts/windows-update-smoke.cjs release/win-unpacked
+      - name: Build incremental package from published baseline
+        if: inputs.base_tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BASE_TAG: ${{ inputs.base_tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          New-Item -ItemType Directory -Force previous | Out-Null
+          gh release download $env:BASE_TAG --pattern '*-win-x64.zip' --dir previous
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download exact published baseline' }
+          $baseZip = @(Get-ChildItem previous/*-win-x64.zip)
+          if ($baseZip.Count -ne 1) { throw 'Expected one published baseline ZIP' }
+          Expand-Archive $baseZip[0].FullName previous/unpacked
+          $delta = "release/beichen-$($env:BASE_TAG)-to-$($env:RELEASE_TAG)-win-x64.bcu"
+          node scripts/build-update.cjs --base previous/unpacked/resources/app.asar --target release/win-unpacked/resources/app.asar --platform win32 --arch x64 --electron-major 22 --out $delta
+          if ($LASTEXITCODE -ne 0) { throw 'Incremental package build failed' }
+          node scripts/verify-update.cjs previous/unpacked/resources/app.asar release/win-unpacked/resources/app.asar $delta
+          if ($LASTEXITCODE -ne 0) { throw 'Incremental package replay verification failed' }
       - name: Checksum and publish release assets
         shell: pwsh
         env:
@@ -55,7 +83,12 @@ jobs:
           $checksums | Set-Content release/SHA256SUMS.txt -Encoding ascii
           gh release upload $env:RELEASE_TAG $packages[0].FullName $packages[1].FullName release/SHA256SUMS.txt --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
-          gh release upload $env:RELEASE_TAG docs/media/opening.mp4 docs/media/opening.png docs/media/simple-ui.png docs/media/global-clock.png public/startup.wav --clobber
+          $deltas = @(Get-ChildItem release/*.bcu, release/*.bcu.sha256 -ErrorAction SilentlyContinue)
+          if ($deltas.Count -gt 0) {
+            gh release upload $env:RELEASE_TAG @($deltas.FullName) --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Incremental package upload failed' }
+          }
+          gh release upload $env:RELEASE_TAG docs/media/opening.mp4 docs/media/opening.png docs/media/simple-ui.png docs/media/global-clock.png docs/media/region-map.png docs/media/features.png public/startup.wav --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Preview upload failed' }
           $manual = Join-Path "$PWD/release" 'tutorial.txt'
           [System.IO.File]::WriteAllText($manual, (Get-Content docs/tutorial.txt -Raw -Encoding utf8), [System.Text.UTF8Encoding]::new($true))

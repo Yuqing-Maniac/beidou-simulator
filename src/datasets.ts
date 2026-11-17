@@ -5,7 +5,7 @@ export type Dataset = {
   name: string;
   purpose: string;
   fault: boolean;
-  motion?: "line" | "circle" | "eight";
+  motion?: "line" | "circle" | "eight" | "stop-go" | "slalom";
   tokens: Tokens;
   checksumOverride?: string;
   extraSentences?: { label: string; sentence: string }[];
@@ -281,8 +281,14 @@ export const DATASETS: Dataset[] = [
   },
 ];
 
-for (const [motion, name] of [["line","直线加速巡航"],["circle","定速圆周转弯"],["eight","8 字交替转弯"]] as const) {
-  DATASETS.push({id:`motion-${motion}`,name,purpose:"地图、姿态、速度与输出报文联动。点击开始运动，再开启连续发送进行网络测试。",fault:false,motion,tokens:base({heading:"90.00",pitch:"0.00",roll:"0.00"})});
+for (const [motion, name, purpose] of [
+  ["line", "直线加速巡航", "从静止加速到设定速度，沿固定航向行驶。"],
+  ["circle", "定速圆周转弯", "加速后按设定半径顺时针绕圈，位置、航向与转弯角速度同步。"],
+  ["eight", "8 字交替转弯", "连续交替向左、向右绕圈，经过交点后改变转向，重复形成 8 字轨迹。"],
+  ["stop-go", "周期启停行驶", "重复加速、匀速、减速、停车四阶段；每阶段时长由半径/速度确定，每周期前进两倍半径。适合检查停车及再次启动。"],
+  ["slalom", "正弦蛇形行驶", "沿初始航向前进并规律左右摆动，摆幅为半径的 1/4；每前进 2π 倍半径完成一个摆动周期，速度、航向及角速度随轨迹变化。"],
+] as const) {
+  DATASETS.push({id:`motion-${motion}`,name,purpose:purpose+"地图与输出报文联动；启动时先平滑加速，之后按模型周期运行。",fault:false,motion,tokens:base({heading:"90.00",pitch:"0.00",roll:"0.00"})});
 }
 
 export function officialTokens(): Tokens {
