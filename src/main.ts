@@ -36,7 +36,7 @@ import {
   warningMask,
   type Tokens,
 } from "./gpchc.ts";
-import { formatTrackTokens, latLonToMeters, metersToLatLon, sampleTrack, sampleDynamics, type LatLon, type TrackSpec } from "./track.ts";
+import { applyDistanceScale, distanceScale, formatTrackTokens, latLonToMeters, metersToLatLon, motionButtonEffect, sampleDynamics, sampleTrack, type LatLon, type TrackSpec } from "./track.ts";
 
 type StreamRow = {
   id: number;
@@ -592,6 +592,7 @@ function setRunning(on: boolean) {
   const hz=Number(($('rate') as HTMLInputElement).value);const rate=Number.isFinite(hz)&&hz>0?hz:10;
   run.textContent=on?'停止测试':'开始测试';
   run.title=on?`每秒发送 ${rate} 条，地图按相同速度推进位置`:'开始连续发送当前场景';
+  $("track-pause-note").hidden = true;
   if(on){
     state.previewOnly=false;($('map-source') as HTMLSelectElement).value='current';recordTrail();
     void sendOnce();state.timer=window.setInterval(()=>void sendOnce(),1000/rate);
@@ -690,6 +691,31 @@ function numInput(id: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function distanceMultiplier(): number {
+  const mode = ($("track-scale") as HTMLSelectElement).value;
+  const raw = mode === "custom" ? Number(($("track-scale-custom") as HTMLInputElement).value) : Number(mode);
+  return distanceScale(raw);
+}
+
+function formatMeasure(n: number): string {
+  const rounded = Math.round(n * 1000) / 1000;
+  return Object.is(rounded, -0) ? "0" : String(rounded);
+}
+
+function refreshEffective() {
+  const k = distanceMultiplier();
+  ($("track-scale-custom-label") as HTMLElement).hidden = ($("track-scale") as HTMLSelectElement).value !== "custom";
+  const speed = numInput("track-speed", 10) * k;
+  const accel = numInput("track-accel", 2) * k;
+  const kind = ($("track-kind") as HTMLSelectElement).value;
+  const radiusPart = kind === "path" ? "路径折线不倍增" : `半径 ${formatMeasure(numInput("track-radius", 80) * k)} m`;
+  $("track-effective").textContent = `生效速度 ${formatMeasure(speed)} m/s、加速度 ${formatMeasure(accel)} m/s²、${radiusPart}（倍增 ${formatMeasure(k)}×）`;
+}
+
+function scaledTrack() {
+  return applyDistanceScale(trackSpec(), numInput("track-accel", 2), distanceMultiplier());
+}
+
 function trackSpec(): TrackSpec {
   const kind = ($("track-kind") as HTMLSelectElement).value;
   const lat = numInput("track-lat", 31.15960455);
@@ -704,7 +730,10 @@ function trackSpec(): TrackSpec {
   return { kind: kind as Exclude<TrackSpec["kind"],"path">, lat, lon, headingDeg, speedMps, radiusM };
 }
 
-function liveMotion(t: number) { return sampleDynamics(trackSpec(), t, numInput("track-accel", 2)); }
+function liveMotion(t: number) {
+  const scaled = scaledTrack();
+  return sampleDynamics(scaled.spec, t, scaled.acceleration);
+}
 
 function drawMap() {
   const canvas = $("track-map") as HTMLCanvasElement;
@@ -719,7 +748,7 @@ function drawMap() {
   const h = rect.height;
   ctx.fillStyle = "#d7e6df";
   ctx.fillRect(0, 0, w, h);
-  const spec = trackSpec();
+  const spec = scaledTrack().spec;
   const elapsed = state.trackOn ? (performance.now() - state.trackT0) / 1000 : 0;
   const mapTokens=($("map-source") as HTMLSelectElement).value==="receive" ? state.receivedTokens ?? {} : state.tokens;
   const lat=mapTokens.lat?.trim()?Number(mapTokens.lat):NaN,lon=mapTokens.lon?.trim()?Number(mapTokens.lon):NaN;
@@ -728,14 +757,15 @@ function drawMap() {
   $('map-status').textContent=valid?'':'坐标超范围，故障报文不绘制定位点';
   const preview: LatLon[] = [];
   const steps = spec.kind === "path" ? Math.max(2, spec.points.length * 8) : 80;
-  const horizon = spec.kind === "line" ? 20 : spec.kind === "path" ? 60 : ((spec.kind === "eight" ? 4 : 2) * Math.PI * Math.max(1, numInput("track-radius", 80))) / Math.max(0.1, numInput("track-speed", 10));
+  const radiusM = spec.kind === "path" ? 1 : spec.radiusM;
+  const horizon = spec.kind === "line" ? 20 : spec.kind === "path" ? 60 : ((spec.kind === "eight" ? 4 : 2) * Math.PI * Math.max(1, radiusM)) / Math.max(0.1, spec.speedMps);
   for (let i = 0; i <= steps; i++) preview.push(sampleTrack(spec, (horizon * i) / steps));
   if (spec.kind === "path") preview.splice(0, preview.length, ...spec.points, ...(spec.loop && spec.points.length ? [spec.points[0]] : []));
   const origin = ($("map-source") as HTMLSelectElement).value==="receive"&&valid ? {lat,lon} : { lat: numInput("track-lat", 31.15960455), lon: numInput("track-lon", 121.1784799) };
   if(!state.previewMotion)preview.length=0;
   const pts = [...preview, ...state.mapTrail, ...faultPositions, now, origin];
   const automatic=($('map-zoom') as HTMLSelectElement).value==='auto';
-  const view=fitMapView(origin,pts,w,h,{automatic,zoom:numInput('map-zoom',1),speed:state.previewMotion?Math.max(numInput("track-speed",10),Math.hypot(now.ve,now.vn)):Math.hypot(now.ve,now.vn),regional:Boolean(regionById(($('map-region') as HTMLSelectElement).value))});
+  const view=fitMapView(origin,pts,w,h,{automatic,zoom:numInput('map-zoom',1),speed:state.previewMotion?Math.max(spec.speedMps,Math.hypot(now.ve,now.vn)):Math.hypot(now.ve,now.vn),regional:Boolean(regionById(($('map-region') as HTMLSelectElement).value))});
   const {scale,ox,oy}=view;
   state.mapView = view;
   $('map-scale').textContent=`${automatic?'自动适配 · ':''}${mapScaleText(scale)} · 当前点、轨迹及故障点完整显示`;
@@ -791,6 +821,8 @@ function drawMap() {
   ctx.restore();
   const text = formatTrackTokens(now);
   $("track-readout").textContent = `纬 ${coordinate(lat,'lat',coordFormat())}  经 ${coordinate(lon,'lon',coordFormat())}  航向 ${text.heading}°  速度 ${text.v2d} m/s`;
+  $("track-now").textContent = `当前纬度 ${coordinate(now.lat,'lat',coordFormat())}　当前经度 ${coordinate(now.lon,'lon',coordFormat())}　航向 ${text.heading}°　速度 ${text.v2d} m/s`;
+  refreshEffective();
   updateTestSummary();
   $('map-summary').textContent=`${dataset().name} · ${decodeStatus(mapTokens.status??"").tens} · 告警 ${mapTokens.warning??"—"}`;
 }
@@ -802,6 +834,7 @@ function setTrack(on: boolean) {
   window.cancelAnimationFrame(state.trackFrame);
   const button = $("track-run");
   button.textContent = on ? "暂停运动" : "开始运动";
+  button.title = on ? "暂停后连续发送不停，报文冻结在当前位置" : "开始运动。若尚未开始测试，同时开始连续发送";
   button.classList.toggle("is-on", on);
   button.setAttribute("aria-pressed", on ? "true" : "false");
   if (!on) {drawMap();return;}
@@ -821,7 +854,17 @@ function setTrack(on: boolean) {
 $("tab-board").addEventListener("click", () => show("board"));
 $("tab-track").addEventListener("click", () => show("track"));
 $("tab-proto").addEventListener("click", () => show("proto"));
-$("track-run").addEventListener("click", () => setTrack(!state.trackOn));
+$("track-run").addEventListener("click", () => {
+  const starting = !state.trackOn;
+  const effect = motionButtonEffect(state.running, starting);
+  setTrack(starting);
+  if (effect === "start-send") setRunning(true);
+  const note = $("track-pause-note");
+  if (effect === "freeze-send") {
+    note.hidden = false;
+    note.textContent = "已暂停运动。连续发送仍在进行，报文冻结在当前位置。";
+  } else note.hidden = true;
+});
 $("track-clear").addEventListener("click", () => {
   state.path = [];
   drawMap();
@@ -840,8 +883,15 @@ $("track-clear").addEventListener("click", () => {
   state.path.push(metersToLatLon(view.origin, east, north));
   drawMap();
 });
-for (const id of ["track-accel", "track-kind", "track-lat", "track-lon", "track-heading", "track-speed", "track-radius", "track-loop"]) {
+for (const id of ["track-accel", "track-kind", "track-lat", "track-lon", "track-heading", "track-speed", "track-radius", "track-loop", "track-scale", "track-scale-custom"]) {
   $(id).addEventListener("change", () => {
+    if (id === "track-scale" || id === "track-scale-custom") {
+      const custom = $("track-scale-custom") as HTMLInputElement;
+      const n = Number(custom.value);
+      const bad = ($("track-scale") as HTMLSelectElement).value === "custom" && !(Number.isFinite(n) && n > 0);
+      custom.setCustomValidity(bad ? "倍增倍数须为正数" : "");
+      if (bad) custom.reportValidity();
+    }
     frozenTrackTime = 0;state.previewMotion=true;state.mapTrail=[];state.distance=0;
     if (state.trackOn) state.trackT0 = performance.now();
     drawMap();
@@ -888,7 +938,7 @@ if (window.beidou) {
 }
 const nicsReady = refreshNics();
 
-const controlIds = ['map-region','advance-position','map-zoom','replay-speed','replay-rate','coord-format','unicast-on','unicast-host','unicast-port','host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-loop'];
+const controlIds = ['map-region','advance-position','map-zoom','replay-speed','replay-rate','coord-format','unicast-on','unicast-host','unicast-port','host','port','iface','rate','udp-on','tcp-on','tcp-mode','tcp-host','tcp-port','use-sys-time','track-kind','track-lat','track-lon','track-heading','track-speed','track-radius','track-accel','track-scale','track-scale-custom','track-loop'];
 const statusText = (text: string) => { $('file-status').textContent = text; };
 function download(name: string, content: string, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([content],{type}));
@@ -1116,6 +1166,8 @@ function updateTestSummary(){
   const simple=document.body.classList.contains('simple');
   const message=state.lastError?'发送未完成：'+state.lastError+'。请展开连接设置检查目标。':dataset().fault?'这是故障报文，非法坐标不会在地图上伪造位置。':speed===0&&!dataset().motion&&!state.previewMotion?'当前是静止场景，位置保持不动；想看轨迹可选直线、慢速或绕圈。':!dataset().motion&&!($('advance-position') as HTMLInputElement).checked?'已保留原始坐标；开启“标准场景按速度更新位置”后才会推进轨迹。':speed<.1?'当前速度很低，坐标正在缓慢更新；可将地图放大到 100× 观察，报文速度保持原值。':state.running?'正在按场景速度移动，地图与发送报文使用同一份位置数据。':'已准备好。点击“开始测试”发送，或选择“仅看演示”。';
   $('test-guidance').textContent=message;
+  const sendStatus=document.getElementById('track-send-status');
+  if(sendStatus)sendStatus.textContent=`${state.running?'发送：正在发送':'发送：未在发送'}　已发 ${state.sent} 条`;
   $('preview-run').textContent=state.previewOnly?'停止演示':'仅看演示（不发送）';
 }
 $('trace-clear').onclick=()=>{state.mapTrail=[];state.distance=0;faultPositions.length=0;drawMap();};

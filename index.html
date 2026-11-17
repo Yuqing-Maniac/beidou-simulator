@@ -61,8 +61,16 @@
         <button type="button" id="track-clear">清除路径</button><button id="save-path">保存路径</button><button id="load-path">导入路径</button>
 
       </section>
-      <p class="track-note">离线仿真场地底图，金色为已行轨迹，绿色为预览轨迹。车辆从静止加速，转弯联动横滚与侧向加速度。手绘模式下点击地图加点。航向沿切线。Gyro Z 只写入航向变化率，单位仍是未规定。输入可切换小数度、度分秒、度分千分；线上报文始终为十进制度、小数 8 位。</p>
+      <p class="track-note">离线仿真场地底图，金色为已行轨迹，绿色为预览轨迹。车辆从静止加速，转弯联动横滚与侧向加速度。手绘模式下点击地图加点。航向沿切线。Gyro Z 只写入航向变化率，单位仍是未规定。输入可切换小数度、度分秒、度分千分；线上报文始终为十进制度、小数 8 位。距离倍增只放大速度、加速度和米制半径，输入框仍是基础值。起点纬经、航向、发送频率和高度不乘。</p>
       </details>
+      <div class="track-status" aria-label="当前位置与发送">
+        <label>距离倍增<select id="track-scale"><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option><option value="custom">自定义</option></select></label>
+        <label id="track-scale-custom-label" hidden>自定义倍数<input id="track-scale-custom" type="number" min="0.001" step="any" value="1" /></label>
+        <p id="track-effective">生效速度 10 m/s、加速度 2 m/s²、半径 80 m（倍增 1×）</p>
+        <p id="track-now">当前纬度 —　当前经度 —　航向 —　速度 —</p>
+        <p id="track-send-status">发送：未在发送　已发 0 条</p>
+        <p id="track-pause-note" hidden>已暂停运动。连续发送仍在进行，报文冻结在当前位置。</p>
+      </div>
       <canvas id="track-map" width="1240" height="620"></canvas><p id="track-readout"></p><p class="map-attribution"><span id="map-attribution">离线试验场示意底图 · 不代表真实地理。</span><span id="map-status"></span></p><details class="map-license"><summary>地图来源与许可</summary><pre id="map-credits"></pre><details><summary>ODbL 1.0 许可全文</summary><pre id="map-license"></pre></details></details><p class="map-legend">▲ 红色：当前真实位置　━ 金色：已行轨迹　━ 绿色：预计路径　◆ 紫色：注入的故障位置</p>
     </section>
 <details id="inspection-settings"><summary>查看协议字段与收发记录</summary>

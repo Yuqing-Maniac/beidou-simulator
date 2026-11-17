@@ -208,6 +208,22 @@ function samplePath(spec: Extract<TrackSpec, { kind: "path" }>, t: number): Trac
   return moving(heading, speed, lat, lon, 0);
 }
 
+export function distanceScale(value: number): number {
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+export function applyDistanceScale(spec: TrackSpec, acceleration: number, scale: number): { spec: TrackSpec; acceleration: number } {
+  const k = distanceScale(scale);
+  if (spec.kind === "path") return { spec: { ...spec, speedMps: spec.speedMps * k }, acceleration: acceleration * k };
+  return { spec: { ...spec, speedMps: spec.speedMps * k, radiusM: spec.radiusM * k }, acceleration: acceleration * k };
+}
+
+export function motionButtonEffect(sending: boolean, starting: boolean): "start-send" | "freeze-send" | "none" {
+  if (starting && !sending) return "start-send";
+  if (!starting && sending) return "freeze-send";
+  return "none";
+}
+
 export function sampleTrack(spec: TrackSpec, tSec: number): TrackSample {
   const t = Math.max(0, tSec);
   if (spec.kind === "path") return samplePath(spec, t);

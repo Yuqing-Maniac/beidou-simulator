@@ -195,7 +195,61 @@ test('official sentence is unchanged at motion start and very slow motion retain
  const edge={...tokens,lon:'179.99999999',ve:'10',vn:'0'};assert.ok(Math.abs(Number(datasetPosition(edge,100)!.lon))<=180);
 });
 
-import { latLonToMeters, sampleDynamics } from '../src/track.ts';
+import { applyDistanceScale, latLonToMeters, motionButtonEffect, sampleDynamics } from "../src/track.ts";
+
+test("2× distance scale doubles figure-eight speed, acceleration and size, and 1× restores the base", () => {
+  const base = { kind: "eight" as const, lat: 31.15960455, lon: 121.1784799, headingDeg: 15, speedMps: 10, radiusM: 80 };
+  const doubled = applyDistanceScale(base, 2, 2);
+  const restored = applyDistanceScale(base, 2, 1);
+  assert.equal(doubled.spec.kind, "eight");
+  if (doubled.spec.kind === "path" || restored.spec.kind === "path") assert.fail("expected a radius track");
+  assert.equal(doubled.spec.lat, base.lat);
+  assert.equal(doubled.spec.lon, base.lon);
+  assert.equal(doubled.spec.headingDeg, base.headingDeg);
+  assert.equal(doubled.spec.speedMps, 20);
+  assert.equal(doubled.spec.radiusM, 160);
+  assert.equal(doubled.acceleration, 4);
+  assert.deepEqual(restored.spec, base);
+  assert.equal(restored.acceleration, 2);
+  assert.equal(base.speedMps, 10);
+  assert.equal(base.radiusM, 80);
+  for (const bad of [0, -2, Number.NaN]) {
+    const ignored = applyDistanceScale(base, 2, bad);
+    assert.deepEqual(ignored.spec, base);
+    assert.equal(ignored.acceleration, 2);
+  }
+  const plain = sampleDynamics(base, 12, 2);
+  const fast = sampleDynamics(doubled.spec, 12, doubled.acceleration);
+  assert.ok(Math.abs(fast.v2d - 20) < 1e-6);
+  assert.ok(Math.abs(plain.v2d - 10) < 1e-6);
+  assert.ok(Math.abs(fast.headingDeg - plain.headingDeg) < 1e-4);
+  const near = latLonToMeters(base, plain);
+  const far = latLonToMeters(base, fast);
+  assert.ok(Math.abs(Math.hypot(far.east, far.north) - 2 * Math.hypot(near.east, near.north)) < 0.05);
+  assert.ok(Math.abs(fast.ax - 2 * plain.ax) < 1e-6);
+  const rampPlain = sampleDynamics(base, 1, 2);
+  const rampFast = sampleDynamics(doubled.spec, 1, doubled.acceleration);
+  assert.ok(Math.abs(rampFast.v2d - 4) < 1e-6);
+  assert.ok(Math.abs(rampFast.ay - 2 * rampPlain.ay) < 1e-6);
+});
+
+test("distance scale speeds a drawn path and keeps its waypoints", () => {
+  const spec = { kind: "path" as const, speedMps: 5, loop: false, points: [{ lat: 31, lon: 121 }, { lat: 31.001, lon: 121.001 }] };
+  const scaled = applyDistanceScale(spec, 1.5, 2);
+  assert.equal(scaled.spec.kind, "path");
+  if (scaled.spec.kind !== "path") return;
+  assert.equal(scaled.spec.speedMps, 10);
+  assert.equal(scaled.acceleration, 3);
+  assert.deepEqual(scaled.spec.points, spec.points);
+});
+
+test("starting motion asks to send, and pausing while sending freezes the sentence", () => {
+  assert.equal(motionButtonEffect(false, true), "start-send");
+  assert.equal(motionButtonEffect(true, false), "freeze-send");
+  assert.equal(motionButtonEffect(true, true), "none");
+  assert.equal(motionButtonEffect(false, false), "none");
+});
+
 test('periodic stop-go motion has consistent accelerating, cruising, braking and stopped positions', () => {
   const spec = { kind: 'stop-go' as const, lat: 31, lon: 121, headingDeg: 30, speedMps: 10, radiusM: 50 };
   // Four 5-second phases; every 20 seconds advances by 100 metres.
