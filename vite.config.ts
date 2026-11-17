@@ -77,6 +77,7 @@ function udpPlugin() {
 
 export default defineConfig({
   base: "./",
+  build: { manifest: true },
   plugins: [udpPlugin()],
   server: { host: "127.0.0.1", port: 43123, strictPort: true },
 });

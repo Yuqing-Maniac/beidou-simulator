@@ -9,11 +9,15 @@
   "homepage": "https://localhost/beidou-simulator",
   "scripts": {
     "start": "vite --host 127.0.0.1 --port 43123 --strictPort",
-    "test": "node --experimental-strip-types --test --test-force-exit test/protocol.test.ts test/motion.test.ts test/workspace.test.ts test/tutorial.test.ts test/fault-injection.test.ts test/map-viewport.test.ts test/regions.test.ts && node --test --test-force-exit test/multicast.test.mjs test/link.test.mjs test/update.test.cjs",
+    "test": "node --experimental-strip-types --test --test-force-exit test/protocol.test.ts test/motion.test.ts test/workspace.test.ts test/tutorial.test.ts test/fault-injection.test.ts test/map-viewport.test.ts test/regions.test.ts && node --test --test-force-exit test/multicast.test.mjs test/link.test.mjs test/update.test.cjs test/shortcuts.test.cjs",
     "build": "vite build",
-    "pack:linux": "vite build && electron-builder --linux deb tar.gz AppImage",
-    "pack:win": "vite build && electron-builder --win zip portable",
-    "build:update": "node scripts/build-update.cjs"
+    "pack:linux": "vite build && electron-builder --linux tar.gz --x64",
+    "pack:linux:arm64": "vite build && electron-builder --linux tar.gz --arm64",
+    "pack:win": "vite build && electron-builder --win portable --x64",
+    "pack:win7": "vite build && electron-builder --win portable --x64",
+    "build:update": "node scripts/build-update.cjs",
+    "assemble:win": "node scripts/assemble-release.cjs win",
+    "assemble:linux:arm64": "node scripts/assemble-release.cjs linux-arm64"
   },
   "devDependencies": {
     "electron": "^22.3.27",
@@ -24,6 +28,7 @@
     "appId": "local.beidou.simulator",
     "productName": "北辰导航模拟器",
     "executableName": "beidou-simulator",
+    "electronLanguages": ["zh-CN", "en-US"],
     "directories": {
       "output": "release"
     },
@@ -33,39 +38,22 @@
     ],
     "asar": true,
     "linux": {
-      "target": [
-        "deb",
-        "tar.gz",
-        "AppImage"
-      ],
+      "target": ["tar.gz"],
       "category": "Utility",
-      "maintainer": "北斗模拟器 <beidou-simulator@localhost>",
-      "artifactName": "beidou-simulator-${version}-kylin-v10-${arch}.${ext}",
+      "maintainer": "北斗模拟器",
+      "artifactName": "beidou-simulator-${version}-linux-${arch}.${ext}",
       "synopsis": "北斗模拟器",
-      "description": "华测 $GPCHC 组播模拟器。安装包面向银河麒麟 V10 x86_64（glibc 2.28）。运行时为 Electron 22。",
+      "description": "华测 $GPCHC 组播模拟器。运行时为 Electron 22。",
       "icon": "public/icon.png"
     },
     "win": {
       "signAndEditExecutable": true,
-      "target": [
-        "zip",
-        "portable"
-      ],
+      "target": ["portable"],
       "artifactName": "beidou-simulator-${version}-win-${arch}.${ext}",
       "icon": "public/icon.ico"
     },
     "deb": {
-      "depends": [
-        "libgtk-3-0",
-        "libnotify4",
-        "libnss3",
-        "libxss1",
-        "libxtst6",
-        "xdg-utils",
-        "libatspi2.0-0",
-        "libuuid1",
-        "libsecret-1-0"
-      ]
+      "depends": ["libgtk-3-0", "libnotify-4", "libnss3", "libxss1", "libxtst6", "xdg-utils", "libatspi2.0-0", "libuuid1", "libsecret-1-0"]
     }
   }
 }

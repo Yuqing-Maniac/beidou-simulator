@@ -1,22 +1,31 @@
-name: Windows test release
+name: Desktop test release
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to build
+        description: Branch, tag or commit to build
         required: true
-        default: v0.8.0-test
+        default: release/0.8.1-test
+      release_tag:
+        description: Draft release tag to create at the checked-out head
+        required: true
+        default: v0.8.1-test
       base_tag:
-        description: Previous compatible release tag for an additional incremental package (empty for first full bootstrap release)
+        description: Previous compatible release tag for incremental packages
         required: false
         default: ''
+      publish_draft:
+        description: Build both first-batch platforms and upload a draft release
+        required: true
+        default: false
+        type: boolean
 permissions:
   contents: write
 jobs:
   windows:
     runs-on: windows-2022
     steps:
-      - name: Check out release source
+      - name: Check out requested source
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag }}
@@ -26,17 +35,23 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --ignore-scripts
-      - name: Validate bundled tutorial and narration
-        run: node --experimental-strip-types --test test/protocol.test.ts test/motion.test.ts test/workspace.test.ts test/tutorial.test.ts test/fault-injection.test.ts test/map-viewport.test.ts test/regions.test.ts
-      - name: Validate incremental update engine
-        run: node --test test/update.test.cjs
-      - name: Build Windows packages
+      - name: Compile and run unit tests
+        run: |
+          npm test
+          npm run build
+      - name: Build Windows portable package
+        if: inputs.publish_draft
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run pack:win
-      - name: Smoke test Windows executable
+      - name: Smoke test Windows executable and icon
+        if: inputs.publish_draft
         shell: pwsh
         run: |
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon("$PWD/release/win-unpacked/beidou-simulator.exe")
+          if ($null -eq $icon -or $icon.Width -lt 16) { throw 'Executable icon resource is missing' }
+          $icon.Dispose()
           $env:ELECTRON_ENABLE_LOGGING = '1'
           $app = Start-Process -FilePath "$PWD/release/win-unpacked/beidou-simulator.exe" -ArgumentList '--disable-gpu', '--enable-logging=stderr', '--remote-debugging-port=9222' -RedirectStandardError startup-stderr.log -RedirectStandardOutput startup-stdout.log -PassThru
           Start-Sleep -Seconds 7
@@ -48,51 +63,144 @@ jobs:
           node scripts/windows-smoke.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Packaged UI smoke test failed' }
           Get-Process -Name beidou-simulator -ErrorAction SilentlyContinue | Stop-Process -Force
+          $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) '北辰导航模拟器.lnk'
+          if (-not (Test-Path $shortcut)) { throw 'First-run desktop shortcut was not created' }
       - name: Native incremental activation and rollback
+        if: inputs.publish_draft
         run: node scripts/windows-update-smoke.cjs release/win-unpacked
       - name: Build incremental package from published baseline
-        if: inputs.base_tag != ''
+        if: inputs.publish_draft && inputs.base_tag != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           BASE_TAG: ${{ inputs.base_tag }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           New-Item -ItemType Directory -Force previous | Out-Null
-          gh release download $env:BASE_TAG --pattern '*-win-x64.zip' --dir previous
-          if ($LASTEXITCODE -ne 0) { throw 'Could not download exact published baseline' }
-          $baseZip = @(Get-ChildItem previous/*-win-x64.zip)
-          if ($baseZip.Count -ne 1) { throw 'Expected one published baseline ZIP' }
+          gh release download $env:BASE_TAG --pattern '*.zip' --dir previous
+          $baseZip = @(Get-ChildItem previous/*.zip)
+          if ($baseZip.Count -ne 1) { throw 'Expected one published Windows baseline ZIP' }
           Expand-Archive $baseZip[0].FullName previous/unpacked
-          $delta = "release/beichen-$($env:BASE_TAG)-to-$($env:RELEASE_TAG)-win-x64.bcu"
-          node scripts/build-update.cjs --base previous/unpacked/resources/app.asar --target release/win-unpacked/resources/app.asar --platform win32 --arch x64 --electron-major 22 --out $delta
-          if ($LASTEXITCODE -ne 0) { throw 'Incremental package build failed' }
-          node scripts/verify-update.cjs previous/unpacked/resources/app.asar release/win-unpacked/resources/app.asar $delta
-          if ($LASTEXITCODE -ne 0) { throw 'Incremental package replay verification failed' }
-      - name: Checksum and publish release assets
-        shell: pwsh
+          $baseAsar = @(Get-ChildItem previous/unpacked -Recurse -Filter app.asar)
+          if ($baseAsar.Count -ne 1) { throw 'Expected one baseline app.asar' }
+          $delta = "release/BeidouSimulator_$($env:BASE_TAG)_to_$($env:RELEASE_TAG)_Windows-x64.bcu"
+          node scripts/build-update.cjs --base $baseAsar[0].FullName --target release/win-unpacked/resources/app.asar --platform win32 --arch x64 --electron-major 22 --out $delta
+          node scripts/verify-update.cjs $baseAsar[0].FullName release/win-unpacked/resources/app.asar $delta
+      - name: Assemble and verify portable ZIP
+        if: inputs.publish_draft
+        run: |
+          node scripts/assemble-release.cjs win
+          Copy-Item release/SHA256SUMS.txt release/SHA256SUMS.windows.txt
+      - name: Upload Windows build artifact
+        if: inputs.publish_draft
+        uses: actions/upload-artifact@v4
+        with:
+          name: beichen-windows
+          path: |
+            release/*.zip
+            release/*.bcu
+            release/*.bcu.sha256
+            release/SHA256SUMS.windows.txt
+          if-no-files-found: error
+          retention-days: 2
+
+  linux-arm64:
+    if: inputs.publish_draft
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Check out requested source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 libatspi2.0-0 libuuid1 libsecret-1-0 libasound2t64
+      - name: Install dependencies and run unit tests
+        run: |
+          npm ci --ignore-scripts
+          npm test
+      - name: Build Kylin ARM64 package
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run pack:linux:arm64
+      - name: Offscreen ARM64 startup and UI smoke test
+        run: |
+          xvfb-run -a bash -c '
+            set -e
+            release/linux-unpacked/beidou-simulator --disable-gpu --remote-debugging-port=9222 >linux-smoke.log 2>&1 &
+            pid=$!
+            trap "kill $pid 2>/dev/null || true" EXIT
+            sleep 7
+            kill -0 $pid
+            node scripts/windows-smoke.cjs
+          '
+      - name: Build incremental package from published baseline
+        if: inputs.base_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
           GH_REPO: ${{ github.repository }}
+          BASE_TAG: ${{ inputs.base_tag }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          $packages = @(Get-ChildItem release/*-win-x64.exe, release/*-win-x64.zip)
-          if ($packages.Count -ne 2) { throw 'Expected EXE and ZIP packages' }
-          $checksums = $packages | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + '  ' + $_.Name }
-          $checksums | Set-Content release/SHA256SUMS.txt -Encoding ascii
-          gh release upload $env:RELEASE_TAG $packages[0].FullName $packages[1].FullName release/SHA256SUMS.txt --clobber
-          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
-          $deltas = @(Get-ChildItem release/*.bcu, release/*.bcu.sha256 -ErrorAction SilentlyContinue)
-          if ($deltas.Count -gt 0) {
-            gh release upload $env:RELEASE_TAG @($deltas.FullName) --clobber
-            if ($LASTEXITCODE -ne 0) { throw 'Incremental package upload failed' }
-          }
-          gh release upload $env:RELEASE_TAG docs/media/opening.mp4 docs/media/opening.png docs/media/simple-ui.png docs/media/global-clock.png docs/media/region-map.png docs/media/features.png public/startup.wav --clobber
-          if ($LASTEXITCODE -ne 0) { throw 'Preview upload failed' }
-          $manual = Join-Path "$PWD/release" 'tutorial.txt'
-          [System.IO.File]::WriteAllText($manual, (Get-Content docs/tutorial.txt -Raw -Encoding utf8), [System.Text.UTF8Encoding]::new($true))
-          gh release upload $env:RELEASE_TAG $manual docs/media/tutorial.png public/tutorial/audio/welcome.mp3 --clobber
-          if ($LASTEXITCODE -ne 0) { throw 'Tutorial attachment upload failed' }
-          gh release edit $env:RELEASE_TAG --draft=false --prerelease
-          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
+          mkdir -p previous
+          gh release download "$BASE_TAG" --pattern '*.tar.gz' --dir previous
+          test "$(find previous -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 1
+          tar -xzf previous/*.tar.gz -C previous
+          base_asar=$(find previous -path '*/resources/app.asar' -type f)
+          test "$(printf '%s\n' "$base_asar" | wc -l)" -eq 1
+          delta="release/BeidouSimulator_${BASE_TAG}_to_${RELEASE_TAG}_Kylin-ARM64.bcu"
+          node scripts/build-update.cjs --base "$base_asar" --target release/linux-unpacked/resources/app.asar --platform linux --arch arm64 --electron-major 22 --out "$delta"
+          node scripts/verify-update.cjs "$base_asar" release/linux-unpacked/resources/app.asar "$delta"
+      - name: Assemble and verify portable tarball
+        run: |
+          node scripts/assemble-release.cjs linux-arm64
+          cp release/SHA256SUMS.txt release/SHA256SUMS.linux-arm64.txt
+      - name: Upload Linux build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: beichen-linux-arm64
+          path: |
+            release/*.tar.gz
+            release/*.bcu
+            release/*.bcu.sha256
+            release/SHA256SUMS.linux-arm64.txt
+          if-no-files-found: error
+          retention-days: 2
+
+  draft-release:
+    if: inputs.publish_draft
+    needs: [windows, linux-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloaded
+      - name: Verify downloaded hashes and create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          cp downloaded/beichen-windows/*.zip assets/
+          cp downloaded/beichen-linux-arm64/*.tar.gz assets/
+          find downloaded -name '*.bcu' -o -name '*.bcu.sha256' | xargs -r -I{} cp {} assets/
+          cat downloaded/beichen-windows/SHA256SUMS.windows.txt downloaded/beichen-linux-arm64/SHA256SUMS.linux-arm64.txt > assets/SHA256SUMS.txt
+          (cd assets && sha256sum -c SHA256SUMS.txt)
+          test "$(find assets -maxdepth 1 -name '*.zip' | wc -l)" -eq 1
+          test "$(find assets -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 1
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --draft --prerelease --target "$GITHUB_SHA" --title "北辰 ${RELEASE_TAG#v} · 第一批测试包" --notes-file docs/RELEASE_NOTES.md
+          fi
+          gh release upload "$RELEASE_TAG" assets/* --clobber
+          gh release view "$RELEASE_TAG" --json url,isDraft,targetCommitish,assets
