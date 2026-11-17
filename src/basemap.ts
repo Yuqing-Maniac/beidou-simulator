@@ -11,5 +11,5 @@ export function drawBasemap(ctx: CanvasRenderingContext2D, ox:number, oy:number,
   ctx.font='12px sans-serif';ctx.fillStyle='#6b8178';
   for(const [name,x,y] of [['导航试验路',80,15],['北向测试道',12,300],['设备区',65,230],['停车测试区',-270,240],['环形试验区',-420,410],['水域',360,-40]] as const){const q=p(x,y);if(q.x>0&&q.x<w&&q.y>0&&q.y<h)ctx.fillText(name,q.x,q.y);}
   ctx.fillStyle='#284c58';ctx.fillText('N ↑',w-40,25);
-  const metres=Math.max(10,Math.round(100/scale/10)*10);ctx.fillRect(20,h-32,metres*scale,3);ctx.fillText(`${metres} m`,20,h-42);
+  const metres=Math.max(.01, Number((100/scale).toPrecision(1)));ctx.fillRect(20,h-32,metres*scale,3);ctx.fillText(`${metres} m`,20,h-42);
 }

@@ -178,3 +178,19 @@ test("drawn path walks the segment and encodes a valid sentence", () => {
   assert.equal(text.lat.split(".")[1].length, 8);
   assert.equal(text.lon.split(".")[1].length, 8);
 });
+
+import { datasetPosition } from '../src/dataset-motion.ts';
+import { DATASETS } from '../src/datasets.ts';
+test('standard dataset positions follow original ENU velocities without changing protocol state',()=>{
+ const tokens={...DATASETS.find(d=>d.id==='slow')!.tokens};const original={...tokens};
+ const p=datasetPosition(tokens,10)!;assert.ok(Number(p.lat)>Number(tokens.lat));assert.ok(Number(p.lon)>Number(tokens.lon));assert.deepEqual(tokens,original);
+ const n=(Number(p.lat)-Number(tokens.lat))*111320;assert.ok(Math.abs(n-26)<.002);
+ const reverse=DATASETS.find(d=>d.id==='reverse')!.tokens;assert.ok(Number(datasetPosition(reverse,10)!.lat)<Number(reverse.lat));
+ const stationary=DATASETS.find(d=>d.id==='static-rtk')!.tokens;assert.deepEqual(datasetPosition(stationary,100),{lat:stationary.lat,lon:stationary.lon});
+ assert.equal(datasetPosition(DATASETS.find(d=>d.id==='fault')!.tokens,10),null);
+});
+test('official sentence is unchanged at motion start and very slow motion retains eight decimals',()=>{
+ const tokens=DATASETS[0].tokens;assert.deepEqual(datasetPosition(tokens,0),{lat:tokens.lat,lon:tokens.lon});
+ const p=datasetPosition(tokens,60)!;assert.notEqual(p.lat,tokens.lat);assert.match(p.lat,/^-?\d+\.\d{8}$/);
+ const edge={...tokens,lon:'179.99999999',ve:'10',vn:'0'};assert.ok(Math.abs(Number(datasetPosition(edge,100)!.lon))<=180);
+});
